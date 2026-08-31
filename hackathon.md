@@ -12,7 +12,7 @@
 - **Auth:** none
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-08-31T16:10:13Z
+- **Last updated:** 2026-08-31T17:16:08Z
 
 ## Log
 
@@ -35,7 +35,7 @@ id (`convex/http.ts`, `convex/agentmailEvents.ts`, `convex/schema.ts`). Convex
 features: schema, tables, indexes, actions, mutations, HTTP actions. No product
 code yet, no API keys set, and the Convex deployment is local only.
 
-### 2026-08-31 - working tree
+### 2026-08-31 - e9adc57
 Shipped the first product surface: a branded home screen that verifies an email
 address without any account or login. A visitor enters their address, gets a
 6-digit code by email, and enters it to confirm the mailbox is real; the
@@ -60,8 +60,9 @@ reported exactly like a wrong code, so neither endpoint reveals who is on the
 list. Convex features: schema, tables, indexes, queries, mutations, actions,
 HTTP actions.
 
-Verified end to end against the dev deployment: send, wrong-code lockout after 5
-attempts, resend cooldown, malformed-address rejection, and the unsubscribe GET
-leaving the row untouched before a POST clears it. Correction to an earlier
+Exercised against the dev deployment through the Convex CLI and over HTTP, not
+yet clicked through in a browser: send, wrong-code lockout after 5 attempts,
+resend cooldown, malformed-address rejection, and the unsubscribe GET leaving
+the row untouched before a POST clears it. Correction to an earlier
 entry: components is `@convex-dev/static-hosting`, not none, since
 `convex/convex.config.ts` registers it.
