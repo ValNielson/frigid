@@ -90,3 +90,8 @@ Required:
 ## License
 
 MIT. See [LICENSE](LICENSE).
+
+## getting Started
+npx convex dev
+npm install
+npm run dev

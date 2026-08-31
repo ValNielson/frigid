@@ -22,6 +22,19 @@ export const createInbox = action({
   },
 });
 
+/** Lists inboxes so the configured AGENTMAIL_INBOX_ID can be confirmed. */
+export const listInboxes = action({
+  args: {},
+  returns: v.array(v.object({ inboxId: v.string(), email: v.string() })),
+  handler: async () => {
+    const response = await client().inboxes.list();
+    return response.inboxes.map((inbox) => ({
+      inboxId: inbox.inboxId,
+      email: inbox.email,
+    }));
+  },
+});
+
 export const sendMessage = action({
   args: {
     inboxId: v.string(),
@@ -29,6 +42,7 @@ export const sendMessage = action({
     subject: v.string(),
     text: v.optional(v.string()),
     html: v.optional(v.string()),
+    headers: v.optional(v.record(v.string(), v.string())),
   },
   returns: v.object({ messageId: v.string(), threadId: v.string() }),
   handler: async (_ctx, args) => {

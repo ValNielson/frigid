@@ -1,26 +1,56 @@
 @import "tailwindcss";
 
+/* frigid: a cold, clean fridge interior with warm food accents.
+   Frost blues carry the surfaces; citrus carries the call to action. */
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
-}
-
-@theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --background: #eef5fa;
+  --surface: #ffffff;
+  --surface-muted: #f4f8fb;
+  --border-subtle: #dbe7ef;
+  --foreground: #0f1b24;
+  --muted: #5d7c8f;
+  --frost: #2f8fbf;
+  --frost-soft: #cfe6f3;
+  --citrus: #ef7c2f;
+  --citrus-strong: #d96a20;
+  --danger: #b93d29;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #08131a;
+    --surface: #0f2029;
+    --surface-muted: #0c1a22;
+    --border-subtle: #1d3945;
+    --foreground: #e6f2f8;
+    --muted: #9fbccb;
+    --frost: #58b6e0;
+    --frost-soft: #16323f;
+    --citrus: #f4914b;
+    --citrus-strong: #ef7c2f;
+    --danger: #f08a76;
   }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-surface: var(--surface);
+  --color-surface-muted: var(--surface-muted);
+  --color-border-subtle: var(--border-subtle);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+  --color-frost: var(--frost);
+  --color-frost-soft: var(--frost-soft);
+  --color-citrus: var(--citrus);
+  --color-citrus-strong: var(--citrus-strong);
+  --color-danger: var(--danger);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
 }
 
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  /* Use the Geist faces layout.tsx wires up, rather than overriding them. */
+  font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }

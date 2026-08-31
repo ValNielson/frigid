@@ -14,6 +14,9 @@ import type * as env from "../env.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as http from "../http.js";
 import type * as openai from "../openai.js";
+import type * as policy from "../policy.js";
+import type * as subscribers from "../subscribers.js";
+import type * as verification from "../verification.js";
 
 import type {
   ApiFromModules,
@@ -28,6 +31,9 @@ declare const fullApi: ApiFromModules<{
   firecrawl: typeof firecrawl;
   http: typeof http;
   openai: typeof openai;
+  policy: typeof policy;
+  subscribers: typeof subscribers;
+  verification: typeof verification;
 }>;
 
 /**
@@ -56,4 +62,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  staticHosting: import("@convex-dev/static-hosting/_generated/component.js").ComponentApi<"staticHosting">;
+};

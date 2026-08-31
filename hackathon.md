@@ -7,12 +7,12 @@
 - **Repo:** https://github.com/ValNielson/frigid
 - **Frontend:** Convex static hosting
 - **Convex deployment:** not deployed
-- **Components:** none
-- **Convex features:** schema, tables, indexes, actions, mutations, HTTP actions
+- **Components:** @convex-dev/static-hosting
+- **Convex features:** schema, tables, indexes, queries, mutations, actions, HTTP actions
 - **Auth:** none
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-08-28T20:04:11Z
+- **Last updated:** 2026-08-31T16:10:13Z
 
 ## Log
 
@@ -34,3 +34,34 @@ connection as a Svix-verified webhook that records raw events deduped by event
 id (`convex/http.ts`, `convex/agentmailEvents.ts`, `convex/schema.ts`). Convex
 features: schema, tables, indexes, actions, mutations, HTTP actions. No product
 code yet, no API keys set, and the Convex deployment is local only.
+
+### 2026-08-31 - working tree
+Shipped the first product surface: a branded home screen that verifies an email
+address without any account or login. A visitor enters their address, gets a
+6-digit code by email, and enters it to confirm the mailbox is real; the
+confirmed state is stored in Convex (`app/page.tsx`,
+`app/components/VerifyEmailCard.tsx`, `app/verified/page.tsx`).
+
+Backend is a new `subscribers` table indexed by email and by unsubscribe token,
+with the code stored only as a salted SHA-256 hash. Codes expire after 10
+minutes and allow 5 attempts; resends are throttled by a 60-second cooldown and
+5 sends per rolling hour. Random codes and tokens are generated in a `"use node"`
+action because Convex mutations are deterministic and their `Math.random` is
+seeded (`convex/schema.ts`, `convex/verification.ts`, `convex/subscribers.ts`,
+`convex/policy.ts`).
+
+Unsubscribe is served from the Convex HTTP router so the link works straight
+from a mail client with no JavaScript. The GET only renders a confirmation and
+the opt-out happens on POST, so link scanners that fetch every URL in a message
+cannot silently unsubscribe anyone; `List-Unsubscribe` headers still give Gmail
+its native one-click path (`convex/http.ts`, `convex/agentmail.ts`). Unknown and
+already-used tokens render the same neutral page, and an unknown address is
+reported exactly like a wrong code, so neither endpoint reveals who is on the
+list. Convex features: schema, tables, indexes, queries, mutations, actions,
+HTTP actions.
+
+Verified end to end against the dev deployment: send, wrong-code lockout after 5
+attempts, resend cooldown, malformed-address rejection, and the unsubscribe GET
+leaving the row untouched before a POST clears it. Correction to an earlier
+entry: components is `@convex-dev/static-hosting`, not none, since
+`convex/convex.config.ts` registers it.
