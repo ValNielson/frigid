@@ -12,10 +12,17 @@ import type * as agentmail from "../agentmail.js";
 import type * as agentmailEvents from "../agentmailEvents.js";
 import type * as env from "../env.js";
 import type * as firecrawl from "../firecrawl.js";
+import type * as hash from "../hash.js";
 import type * as http from "../http.js";
+import type * as me from "../me.js";
+import type * as onboardingEmail from "../onboardingEmail.js";
+import type * as onboardingQuestions from "../onboardingQuestions.js";
+import type * as onboardingSummary from "../onboardingSummary.js";
 import type * as openai from "../openai.js";
 import type * as policy from "../policy.js";
-import type * as subscribers from "../subscribers.js";
+import type * as preferences from "../preferences.js";
+import type * as sessions from "../sessions.js";
+import type * as users from "../users.js";
 import type * as verification from "../verification.js";
 
 import type {
@@ -29,10 +36,17 @@ declare const fullApi: ApiFromModules<{
   agentmailEvents: typeof agentmailEvents;
   env: typeof env;
   firecrawl: typeof firecrawl;
+  hash: typeof hash;
   http: typeof http;
+  me: typeof me;
+  onboardingEmail: typeof onboardingEmail;
+  onboardingQuestions: typeof onboardingQuestions;
+  onboardingSummary: typeof onboardingSummary;
   openai: typeof openai;
   policy: typeof policy;
-  subscribers: typeof subscribers;
+  preferences: typeof preferences;
+  sessions: typeof sessions;
+  users: typeof users;
   verification: typeof verification;
 }>;
 

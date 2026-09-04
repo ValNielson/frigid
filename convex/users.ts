@@ -10,7 +10,7 @@ import {
 } from "./policy";
 
 /**
- * Internal data layer for email verification.
+ * Internal data layer for users: email verification, sessions, onboarding state.
  *
  * Everything here runs in Convex's default (deterministic) runtime, where
  * Math.random() is seeded and must never be used for secrets. All randomness
@@ -47,14 +47,14 @@ export const issueCode = internalMutation({
   }),
   handler: async (ctx, args) => {
     const existing = await ctx.db
-      .query("subscribers")
+      .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .unique();
 
     const defaultCooldown = Math.ceil(RESEND_COOLDOWN_MS / 1000);
 
     if (existing === null) {
-      await ctx.db.insert("subscribers", {
+      await ctx.db.insert("users", {
         email: args.email,
         subscribed: true,
         unsubscribeToken: args.unsubscribeToken,
@@ -123,7 +123,7 @@ export const consumeCode = internalMutation({
   returns: v.object({ status: verifyStatus }),
   handler: async (ctx, args) => {
     const row = await ctx.db
-      .query("subscribers")
+      .query("users")
       .withIndex("by_email", (q) => q.eq("email", args.email))
       .unique();
 
@@ -170,7 +170,7 @@ export const getByUnsubscribeToken = internalQuery({
   ),
   handler: async (ctx, args) => {
     const row = await ctx.db
-      .query("subscribers")
+      .query("users")
       .withIndex("by_unsubscribe_token", (q) => q.eq("unsubscribeToken", args.token))
       .unique();
     if (row === null) return null;
@@ -184,7 +184,7 @@ export const unsubscribeByToken = internalMutation({
   returns: v.object({ email: v.union(v.string(), v.null()) }),
   handler: async (ctx, args) => {
     const row = await ctx.db
-      .query("subscribers")
+      .query("users")
       .withIndex("by_unsubscribe_token", (q) => q.eq("unsubscribeToken", args.token))
       .unique();
     if (row === null) return { email: null };

@@ -1,14 +1,12 @@
 "use client";
 
-import Link from "next/link";
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { writeSessionToken } from "@/app/lib/session";
 
-type Stage =
-  | { name: "email" }
-  | { name: "code"; email: string }
-  | { name: "verified"; email: string };
+type Stage = { name: "email" } | { name: "code"; email: string };
 
 const inputClass =
   "w-full rounded-xl border border-border-subtle bg-surface-muted px-4 py-3 text-base " +
@@ -21,6 +19,7 @@ const primaryButtonClass =
   "focus-visible:outline-citrus disabled:cursor-not-allowed disabled:opacity-60";
 
 export function VerifyEmailCard() {
+  const router = useRouter();
   const requestCode = useAction(api.verification.requestCode);
   const verifyCode = useAction(api.verification.verifyCode);
 
@@ -31,6 +30,9 @@ export function VerifyEmailCard() {
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const [cooldown, setCooldown] = useState(0);
+  // Set once the code is accepted and stays set: the redirect is in flight and
+  // the form must not accept another submission before this screen unmounts.
+  const [redirecting, setRedirecting] = useState(false);
 
   // Drives the resend button's countdown.
   useEffect(() => {
@@ -72,11 +74,18 @@ export function VerifyEmailCard() {
     setError(null);
     setNotice(null);
     try {
-      const { status } = await verifyCode({ email: stage.email, code });
-      if (status === "verified") {
-        setStage({ name: "verified", email: stage.email });
+      const result = await verifyCode({ email: stage.email, code });
+      if (result.status === "verified") {
+        if (result.sessionToken === undefined) {
+          setError("We couldn't start your session. Try that code again.");
+          return;
+        }
+        writeSessionToken(result.sessionToken);
+        setRedirecting(true);
+        router.replace(result.onboarded === true ? "/home" : "/onboarding");
         return;
       }
+      const status = result.status;
       setError(
         status === "expired"
           ? "That code has expired. Send yourself a new one."
@@ -89,33 +98,6 @@ export function VerifyEmailCard() {
     } finally {
       setPending(false);
     }
-  }
-
-  if (stage.name === "verified") {
-    return (
-      <Card>
-        <div
-          aria-hidden
-          className="mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-frost-soft text-2xl"
-        >
-          ✓
-        </div>
-        <h2 className="text-2xl font-semibold tracking-tight">You&rsquo;re verified</h2>
-        <p className="mt-3 text-muted">
-          <span className="font-medium text-foreground">{stage.email}</span> is confirmed.
-          We&rsquo;ll let you know the moment there&rsquo;s something worth cooking.
-        </p>
-        <Link
-          href="/verified"
-          className={`${primaryButtonClass} mt-7 inline-block text-center`}
-        >
-          See what&rsquo;s next
-        </Link>
-        <p className="mt-4 text-xs text-muted">
-          Every email we send has a one-click unsubscribe link.
-        </p>
-      </Card>
-    );
   }
 
   if (stage.name === "code") {
@@ -149,8 +131,12 @@ export function VerifyEmailCard() {
 
           <Feedback error={error} notice={notice} />
 
-          <button type="submit" disabled={pending || code.length < 6} className={primaryButtonClass}>
-            {pending ? "Checking…" : "Verify email"}
+          <button
+            type="submit"
+            disabled={pending || redirecting || code.length < 6}
+            className={primaryButtonClass}
+          >
+            {redirecting ? "Taking you in…" : pending ? "Checking…" : "Verify email"}
           </button>
         </form>
 
@@ -158,7 +144,7 @@ export function VerifyEmailCard() {
           <button
             type="button"
             onClick={() => sendCode(stage.email, true)}
-            disabled={pending || cooldown > 0}
+            disabled={pending || redirecting || cooldown > 0}
             className="font-medium text-frost underline-offset-4 hover:underline disabled:text-muted disabled:no-underline"
           >
             {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}

@@ -120,7 +120,7 @@ http.route({
     const token = new URL(request.url).searchParams.get("token");
     if (token === null || token.length === 0) return donePage();
 
-    const row = await ctx.runQuery(internal.subscribers.getByUnsubscribeToken, {
+    const row = await ctx.runQuery(internal.users.getByUnsubscribeToken, {
       token,
     });
 
@@ -153,7 +153,7 @@ http.route({
     }
 
     if (token !== null && token.length > 0) {
-      await ctx.runMutation(internal.subscribers.unsubscribeByToken, {
+      await ctx.runMutation(internal.users.unsubscribeByToken, {
         token,
         now: Date.now(),
       });
