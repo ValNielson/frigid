@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-04T20:12:08Z
+- **Last updated:** 2026-09-04T20:27:36Z
 
 ## Log
 
@@ -68,7 +68,7 @@ the row untouched before a POST clears it. Correction to an earlier
 entry: components is `@convex-dev/static-hosting`, not none, since
 `convex/convex.config.ts` registers it.
 
-### 2026-09-04 - working tree
+### 2026-09-04 - 09f10a9
 Turned the mailing-list row into an account and added the onboarding
 questionnaire. Verifying a code now signs you in: it mints a 32-byte token
 stored only as a salted SHA-256 hash in a new `sessions` table, so the database
@@ -107,7 +107,8 @@ inject instead of re-deriving a profile from 21 answers
 scheduled functions, realtime queries.
 
 Verified: typecheck, lint, a clean production build with all five routes
-prerendering static, the three tables live on the dev deployment, and the
-report and prompt-context rendering exercised directly, which caught three
-formatting bugs now fixed. Not yet verified: the full mint-and-resolve session
-loop and the browser click-through.
+prerendering static, the three tables live on the dev deployment, and the report
+and prompt-context rendering exercised directly, which caught three formatting
+bugs now fixed. Clicked through in a browser per the commit message, including
+the returning-user case where an already-onboarded address lands straight on the
+home screen instead of repeating the quiz.
