@@ -1,5 +1,5 @@
 // Shared, runtime-agnostic policy for email verification. Imported by both the
-// default-runtime mutations in subscribers.ts and the "use node" actions in
+// default-runtime mutations in users.ts and the "use node" actions in
 // verification.ts, so it must stay free of Node and Convex imports.
 
 export const CODE_LENGTH = 6;

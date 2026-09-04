@@ -8,11 +8,12 @@
 - **Frontend:** Convex static hosting
 - **Convex deployment:** not deployed
 - **Components:** @convex-dev/static-hosting
-- **Convex features:** schema, tables, indexes, queries, mutations, actions, HTTP actions
-- **Auth:** none
+- **Convex features:** schema, tables, indexes, queries, mutations, actions, HTTP
+  actions, scheduled functions, realtime queries
+- **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-08-31T17:16:08Z
+- **Last updated:** 2026-09-04T20:12:08Z
 
 ## Log
 
@@ -66,3 +67,47 @@ resend cooldown, malformed-address rejection, and the unsubscribe GET leaving
 the row untouched before a POST clears it. Correction to an earlier
 entry: components is `@convex-dev/static-hosting`, not none, since
 `convex/convex.config.ts` registers it.
+
+### 2026-09-04 - working tree
+Turned the mailing-list row into an account and added the onboarding
+questionnaire. Verifying a code now signs you in: it mints a 32-byte token
+stored only as a salted SHA-256 hash in a new `sessions` table, so the database
+never holds anything replayable. A single reactive `me` query decides where you
+land — unverified to `/`, verified to `/onboarding`, onboarded to `/home`
+(`convex/sessions.ts`, `convex/me.ts`, `app/components/AuthGate.tsx`).
+"Onboarded but not verified" is unrepresentable: `onboardedAt` is only written
+by a mutation that already resolved a session.
+
+Session hashing uses Web Crypto rather than `node:crypto`, in a shared
+`convex/hash.ts`. The `me` query runs in Convex's default runtime where
+`node:crypto` does not exist, and that was the only way to keep the gate a
+reactive query instead of an action.
+
+Renamed `subscribers` to `users` and added `onboardedAt` plus a denormalized
+`emailFrequency` for a future digest cron. Added a `preferences` table storing
+answers as a validated record, so adding a question needs no migration
+(`convex/schema.ts`, `convex/users.ts`).
+
+Onboarding is 21 questions across 6 steps, every one offering normal options
+plus an optional write-in. `convex/onboardingQuestions.ts` is the single source
+the wizard, the server-side validator, and the report all read, so they cannot
+drift. Allergies must be answered explicitly, an empty answer and a
+"no allergies" plus a named allergen are both rejected by the mutation rather
+than only by the UI, and allergies render as a hard rule kept separate from
+dislikes. Answers are drafted to localStorage so a refresh mid-quiz loses
+nothing (`app/components/onboarding/`, `convex/preferences.ts`).
+
+The summary report is plain TypeScript with no model call, so onboarding costs
+zero OpenAI tokens. The same renderer produces the review screen and the emailed
+copy, which is scheduled rather than awaited so a mail failure cannot cost a
+user their answers. It also builds a `promptContext` line cached on the row —
+measured at about 178 tokens on a full profile — for future recipe prompts to
+inject instead of re-deriving a profile from 21 answers
+(`convex/onboardingSummary.ts`, `convex/onboardingEmail.ts`). Convex features:
+scheduled functions, realtime queries.
+
+Verified: typecheck, lint, a clean production build with all five routes
+prerendering static, the three tables live on the dev deployment, and the
+report and prompt-context rendering exercised directly, which caught three
+formatting bugs now fixed. Not yet verified: the full mint-and-resolve session
+loop and the browser click-through.

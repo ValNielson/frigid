@@ -6,6 +6,7 @@ import { action } from "./_generated/server";
 import { api, internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { CODE_LENGTH, CODE_TTL_MS, normalizeEmail } from "./policy";
+import { hashSessionToken } from "./hash";
 
 /**
  * Public entry points for email verification.
@@ -101,7 +102,7 @@ export const requestCode = action({
     }
 
     const code = generateCode();
-    const decision = await ctx.runMutation(internal.subscribers.issueCode, {
+    const decision = await ctx.runMutation(internal.users.issueCode, {
       email,
       codeHash: hashCode(code),
       unsubscribeToken: randomBytes(32).toString("base64url"),
@@ -136,6 +137,19 @@ export const requestCode = action({
 
 type VerifyStatus = "verified" | "invalid" | "expired" | "too_many_attempts";
 
+type VerifyResult = {
+  status: VerifyStatus;
+  sessionToken?: string;
+  onboarded?: boolean;
+};
+
+/**
+ * Checks the code and, on success, mints a session.
+ *
+ * Only the "verified" branch returns anything extra. Every other status is byte
+ * for byte what it was before, so the deliberate property that an unknown
+ * address is indistinguishable from a wrong code survives.
+ */
 export const verifyCode = action({
   args: { email: v.string(), code: v.string() },
   returns: v.object({
@@ -145,18 +159,53 @@ export const verifyCode = action({
       v.literal("expired"),
       v.literal("too_many_attempts"),
     ),
+    sessionToken: v.optional(v.string()),
+    onboarded: v.optional(v.boolean()),
   }),
-  handler: async (ctx, args): Promise<{ status: VerifyStatus }> => {
+  handler: async (ctx, args): Promise<VerifyResult> => {
     const email = normalizeEmail(args.email);
     const code = args.code.trim();
     if (email === null || code.length === 0) {
       return { status: "invalid" as const };
     }
 
-    return await ctx.runMutation(internal.subscribers.consumeCode, {
+    const { status } = await ctx.runMutation(internal.users.consumeCode, {
       email,
       codeHash: hashCode(code),
       now: Date.now(),
     });
+    if (status !== "verified") return { status };
+
+    const found = await ctx.runQuery(internal.sessions.userIdForEmail, { email });
+    // consumeCode just set verifiedAt, so this cannot normally miss. Treat a
+    // miss as a failed sign-in rather than pretending there is a session.
+    if (found === null) return { status: "invalid" as const };
+
+    const sessionToken = randomBytes(32).toString("base64url");
+    await ctx.runMutation(internal.sessions.create, {
+      userId: found.userId,
+      tokenHash: await hashSessionToken(
+        sessionToken,
+        requireEnv("VERIFICATION_CODE_PEPPER"),
+      ),
+      now: Date.now(),
+    });
+
+    return { status: "verified" as const, sessionToken, onboarded: found.onboarded };
+  },
+});
+
+/** Idempotent, and deliberately silent about whether the token existed. */
+export const signOut = action({
+  args: { sessionToken: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.runMutation(internal.sessions.revoke, {
+      tokenHash: await hashSessionToken(
+        args.sessionToken,
+        requireEnv("VERIFICATION_CODE_PEPPER"),
+      ),
+    });
+    return null;
   },
 });
