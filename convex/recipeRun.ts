@@ -20,6 +20,8 @@ import { internal } from "./_generated/api";
 import { optionalEnv, requireEnv } from "./env";
 import {
   DOMAIN_SET_TAG,
+  NOT_A_PRODUCT,
+  PRODUCT_PATH,
   RECIPE_DOMAINS,
   STORE_CATALOG,
   departmentFor,
@@ -28,6 +30,7 @@ import {
   LLM_MARKDOWN_WINDOW,
   MAX_ITEMS_PER_STORE_PROBE,
   MAX_LLM_CALLS_PER_JOB,
+  MAX_PER_DOMAIN,
   MAX_SCRAPES_PER_JOB,
   MAX_STORE_PROBES,
   RECIPES_PER_JOB,
@@ -111,11 +114,31 @@ export const search = internalAction({
         );
       });
 
-      const ranked = [...allowed].sort(
+      const byScore = [...allowed].sort(
         (a, b) =>
           scoreCandidate(b, job.prompt, job.answers) -
           scoreCandidate(a, job.prompt, job.answers),
       );
+
+      // Spread the picks across sites. A domain-restricted search will happily
+      // return four recipes from one blog, and three from three sites is the
+      // better answer even when the fourth scored higher. Anything over the cap
+      // goes to the back rather than in the bin, so it is still available if the
+      // better-ranked pages turn out to be unreadable.
+      const perDomain = new Map<string, number>();
+      const preferred: typeof byScore = [];
+      const overflow: typeof byScore = [];
+      for (const result of byScore) {
+        const domain = domainOf(result.url);
+        const seen = perDomain.get(domain) ?? 0;
+        if (seen < MAX_PER_DOMAIN) {
+          perDomain.set(domain, seen + 1);
+          preferred.push(result);
+        } else {
+          overflow.push(result);
+        }
+      }
+      const ranked = [...preferred, ...overflow];
 
       await ctx.runMutation(internal.recipeJobs.setCandidates, {
         jobId: args.jobId,
@@ -421,19 +444,56 @@ export const shop = internalAction({
         })),
       }));
 
-      // One probe per store, naming several items at once, because search is
-      // billed per call and not per term. We never fetch the retailer's own
-      // page: the big chains sit behind bot walls that would bill us for a
-      // CAPTCHA, but their product pages are in the search index all the same.
+      // Items worth a live lookup: the proteins and the things several recipes
+      // share. Probing all thirty would cost more than the whole rest of the job.
       const probeItems = shopping
         .filter((entry) => entry.department === "Meat & Seafood" || entry.usedIn.length > 1)
         .slice(0, MAX_ITEMS_PER_STORE_PROBE);
+
+      const applyProduct = (
+        item: string,
+        storeSlug: string,
+        product: { title: string; url: string },
+      ) => {
+        const slot = shopping
+          .find((row) => row.item === item)
+          ?.stores.find((entry) => entry.storeSlug === storeSlug);
+        if (slot !== undefined) {
+          slot.productTitle = product.title;
+          slot.productUrl = product.url;
+        }
+      };
 
       for (const store of stores.slice(0, MAX_STORE_PROBES)) {
         if (store.domain === null || probeItems.length === 0) continue;
 
         try {
-          const query = probeItems.map((entry) => entry.item).join(" ");
+          // Per-item cache first, keyed by store and item rather than by this
+          // job's particular basket. "beef chuck at Kroger" is the same answer
+          // for everyone who ever asks, so it should be paid for once — caching
+          // the whole basket instead means almost every run pays again.
+          const misses: typeof probeItems = [];
+          for (const entry of probeItems) {
+            const lookupKey = `${store.slug}|${slugifyItem(entry.item)}|us`;
+            const hit = await ctx.runQuery(internal.recipeCache.getStoreLookup, {
+              lookupKey,
+            });
+            if (hit === null) {
+              misses.push(entry);
+              continue;
+            }
+            const product = hit.products[0];
+            if (hit.status === "found" && product !== undefined) {
+              applyProduct(entry.item, store.slug, product);
+            }
+          }
+          if (misses.length === 0) continue;
+
+          // One search naming everything we still need: search is billed per
+          // call, not per term. We never fetch the retailer's own page — the
+          // big chains sit behind bot walls that would bill us for a CAPTCHA,
+          // but their product pages are in the search index all the same.
+          const query = misses.map((entry) => entry.item).join(" ");
           const queryKey = `store:${store.slug}|${normalizeQuery(query)}`;
 
           const found = await ctx.runAction(internal.firecrawlClient.searchWeb, {
@@ -447,23 +507,37 @@ export const shop = internalAction({
             creditsDelta: found.creditsUsed,
           });
 
-          for (const entry of probeItems) {
+          for (const entry of misses) {
             const words = slugifyItem(entry.item).split("-").filter((w) => w.length > 2);
-            if (words.length === 0) continue;
 
-            const match = found.results.find((result) => {
-              if (domainOf(result.url) === "") return false;
-              const title = result.title.toLowerCase();
-              return words.every((word) => title.includes(word));
+            const match =
+              words.length === 0
+                ? undefined
+                : found.results.find((result) => {
+                    if (domainOf(result.url) === "") return false;
+                    // Retailers host recipes and buying guides on the same
+                    // domain as their catalog. Naming one of those as the place
+                    // to buy garlic is worse than saying nothing, so require
+                    // something shaped like a product page and reject anything
+                    // that reads as an article.
+                    if (NOT_A_PRODUCT.test(result.title)) return false;
+                    if (!PRODUCT_PATH.test(result.url)) return false;
+                    return words.every((word) => result.title.toLowerCase().includes(word));
+                  });
+
+            const product =
+              match === undefined ? null : { title: match.title, url: match.url };
+            if (product !== null) applyProduct(entry.item, store.slug, product);
+
+            // "This store has nothing for this" is worth remembering too.
+            // Re-asking it every run is how a credit budget disappears.
+            await ctx.runMutation(internal.recipeCache.putStoreLookup, {
+              lookupKey: `${store.slug}|${slugifyItem(entry.item)}|us`,
+              storeSlug: store.slug,
+              itemSlug: slugifyItem(entry.item),
+              status: product === null ? "none" : "found",
+              products: product === null ? [] : [product],
             });
-            if (match === undefined) continue;
-
-            const target = shopping.find((row) => row.item === entry.item);
-            const slot = target?.stores.find((s) => s.storeSlug === store.slug);
-            if (slot !== undefined) {
-              slot.productTitle = match.title;
-              slot.productUrl = match.url;
-            }
           }
         } catch {
           // A probe is a bonus. The template links above already work, so a

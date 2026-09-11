@@ -36,10 +36,28 @@ export const RECIPE_DOMAINS: readonly string[] = [
   "halfbakedharvest.com",
   "minimalistbaker.com",
   "bonappetit.com",
+  "pinchofyum.com",
+  "natashaskitchen.com",
+  "skinnytaste.com",
+  "onceuponachef.com",
 ];
 
+/**
+ * Titles and URLs that mean a store search matched an article, not a product.
+ *
+ * Retailers publish recipes and buying guides on the same domain as their
+ * catalog, so a naive title match happily returns "Pot Roast Sauce | Roasted
+ * Garlic Options" as the place to buy garlic. Telling someone that is worse
+ * than telling them nothing, so anything matching these is discarded.
+ */
+export const NOT_A_PRODUCT =
+  /\brecipes?\b|\bhow to\b|\bideas\b|\bguide\b|\bblog\b|\btips\b|\bbest \d|\bwhat (?:is|are)\b/i;
+
+/** Path segments retailers use for an actual product page. */
+export const PRODUCT_PATH = /\/(?:ip|p|product|products|shop|item|dp|pd)\//i;
+
 /** Bumped whenever RECIPE_DOMAINS changes, so cached searches do not go stale. */
-export const DOMAIN_SET_TAG = "recipes-v1";
+export const DOMAIN_SET_TAG = "recipes-v2";
 
 export type StoreEntry = {
   /** Stable key for cache rows. Never change one without clearing storeLookups. */

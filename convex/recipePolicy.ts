@@ -7,8 +7,13 @@
  * three. Same spirit as policy.ts, which holds the verification throttles.
  */
 
-/** How many search results to ask for. Search is billed per 10 results. */
-export const SEARCH_LIMIT = 8;
+/**
+ * How many search results to ask for.
+ *
+ * Ten rather than eight because search is billed per ten results either way —
+ * asking for fewer saves nothing and just narrows the pool we rank from.
+ */
+export const SEARCH_LIMIT = 10;
 
 /** How many recipes a finished job aims to contain. */
 export const RECIPES_PER_JOB = 4;
@@ -25,6 +30,15 @@ export const MAX_SCRAPES_PER_JOB = 5;
  * still costs us the wall-clock time, and retries are how budgets evaporate.
  */
 export const SCRAPE_SPACING_MS = 1_500;
+
+/**
+ * Most recipes we will take from any one site.
+ *
+ * Without this a domain-restricted search happily returns four recipes from
+ * the same blog, which is a worse answer than three from three sites even when
+ * the fourth ranked higher.
+ */
+export const MAX_PER_DOMAIN = 2;
 
 /** Stores we run a live product probe against. The rest get template links. */
 export const MAX_STORE_PROBES = 2;
