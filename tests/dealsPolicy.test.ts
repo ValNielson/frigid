@@ -33,21 +33,33 @@ test("allergen exclusion catches the allergen wherever it is written", () => {
 });
 
 test("allergen exclusion is case insensitive", () => {
-  assert.equal(violatesAllergies(coupon("FRESH SHRIMP $8/LB"), ["Shellfish"]), true);
+  assert.equal(
+    violatesAllergies(coupon("FRESH SHRIMP $8/LB"), ["Shellfish"]),
+    true,
+  );
 });
 
 test("a declared allergen we have no term list for still filters on its name", () => {
   // Free text from the onboarding "something else" box.
-  assert.equal(violatesAllergies(coupon("Buckwheat pancake mix"), ["buckwheat"]), true);
+  assert.equal(
+    violatesAllergies(coupon("Buckwheat pancake mix"), ["buckwheat"]),
+    true,
+  );
 });
 
 test("very short free-text allergies do not match everything", () => {
   // Guards the length check: a two-letter entry would otherwise hit most text.
-  assert.equal(violatesAllergies(coupon("Ribeye steak, $9.99/lb"), ["ax"]), false);
+  assert.equal(
+    violatesAllergies(coupon("Ribeye steak, $9.99/lb"), ["ax"]),
+    false,
+  );
 });
 
 test("unrelated coupons survive", () => {
-  assert.equal(violatesAllergies(coupon("Bananas 49c/lb"), ["Peanuts", "Shellfish"]), false);
+  assert.equal(
+    violatesAllergies(coupon("Bananas 49c/lb"), ["Peanuts", "Shellfish"]),
+    false,
+  );
 });
 
 test("excludeAllergens drops only the offending coupons and keeps order", () => {
@@ -73,48 +85,70 @@ test("no declared allergies excludes nothing", () => {
 test("exclusion errs toward withholding rather than letting one through", () => {
   // "butternut" contains "butter". Over-exclusion is the intended direction:
   // a suppressed coupon is a coupon, a missed allergen is a health incident.
-  assert.equal(violatesAllergies(coupon("Butternut squash"), ["Milk or dairy"]), true);
+  assert.equal(
+    violatesAllergies(coupon("Butternut squash"), ["Milk or dairy"]),
+    true,
+  );
 });
 
 test("promotional prefilter passes known merchants regardless of subject", () => {
   const known = new Set(["meijer.com"]);
   assert.equal(
-    isLikelyPromotional({ from: "news@email.meijer.com", subject: "Hello" }, known),
+    isLikelyPromotional(
+      { from: "news@email.meijer.com", subject: "Hello" },
+      known,
+    ),
     true,
   );
 });
 
 test("promotional prefilter passes promo subjects from unknown senders", () => {
   assert.equal(
-    isLikelyPromotional({ from: "hi@somebakery.com", subject: "20% off this week" }, new Set()),
+    isLikelyPromotional(
+      { from: "hi@somebakery.com", subject: "20% off this week" },
+      new Set(),
+    ),
     true,
   );
 });
 
 test("promotional prefilter rejects ordinary mail, which is what makes it free", () => {
   assert.equal(
-    isLikelyPromotional({ from: "mom@example.com", subject: "dinner sunday?" }, new Set()),
+    isLikelyPromotional(
+      { from: "mom@example.com", subject: "dinner sunday?" },
+      new Set(),
+    ),
     false,
   );
 });
 
 test("stripHtml removes script and style content, not just tags", () => {
-  const html = "<style>.a{color:red}</style><p>Buy one<script>evil()</script> get one</p>";
+  const html =
+    "<style>.a{color:red}</style><p>Buy one<script>evil()</script> get one</p>";
   assert.equal(stripHtml(html), "Buy one get one");
 });
 
 test("stripHtml decodes the entities marketing mail actually uses", () => {
-  assert.equal(stripHtml("<p>Ben &amp; Jerry&#39;s&nbsp;half off</p>"), "Ben & Jerry's half off");
+  assert.equal(
+    stripHtml("<p>Ben &amp; Jerry&#39;s&nbsp;half off</p>"),
+    "Ben & Jerry's half off",
+  );
 });
 
 test("email text prefers extracted text and caps length", () => {
   const long = "a".repeat(MAX_EMAIL_CHARS + 500);
-  assert.equal(emailTextForModel({ extractedText: long }).length, MAX_EMAIL_CHARS);
+  assert.equal(
+    emailTextForModel({ extractedText: long }).length,
+    MAX_EMAIL_CHARS,
+  );
 });
 
 test("email text falls back to html when text is absent", () => {
   // The common case: AgentMail omits `text` for HTML-only marketing mail.
-  assert.equal(emailTextForModel({ extractedHtml: "<p>Weekly ad</p>" }), "Weekly ad");
+  assert.equal(
+    emailTextForModel({ extractedHtml: "<p>Weekly ad</p>" }),
+    "Weekly ad",
+  );
 });
 
 test("dedupe key is stable across whitespace and case drift", () => {
@@ -132,7 +166,11 @@ test("dedupe key separates different merchants offering the same thing", () => {
 });
 
 test("normalizeDomain reduces a url to an identity", () => {
-  for (const raw of ["https://www.Meijer.com/weeklyad?x=1", "meijer.com", "HTTP://meijer.com/"]) {
+  for (const raw of [
+    "https://www.Meijer.com/weeklyad?x=1",
+    "meijer.com",
+    "HTTP://meijer.com/",
+  ]) {
     assert.equal(normalizeDomain(raw), "meijer.com");
   }
 });
@@ -143,7 +181,10 @@ test("normalizeDomain rejects things that are not domains", () => {
 });
 
 test("location spellings collapse to one cache key", () => {
-  assert.equal(rawLocationKey("  Grand   Rapids, MI "), rawLocationKey("grand rapids, mi"));
+  assert.equal(
+    rawLocationKey("  Grand   Rapids, MI "),
+    rawLocationKey("grand rapids, mi"),
+  );
   assert.equal(locationKey("Grand Rapids", "MI"), "grand rapids, mi");
 });
 
@@ -155,7 +196,10 @@ test("ingredient matching finds coupons naming any ingredient", () => {
   ];
 
   const hits = matchIngredients(coupons, ["chicken thighs", "lime", "saffron"]);
-  assert.deepEqual(hits.map((c) => c.itemTerms[0]), ["chicken", "lime"]);
+  assert.deepEqual(
+    hits.map((c) => c.itemTerms[0]),
+    ["chicken", "lime"],
+  );
 });
 
 test("ingredient matching ignores noise words and empty input", () => {
@@ -174,7 +218,10 @@ test("scrape freshness respects the ttl boundary", () => {
 test("the on-demand opt-out is never mailed by the cron", () => {
   const now = 1_000_000_000_000;
   assert.equal(isDigestDue(ON_DEMAND_ONLY, undefined, now), false);
-  assert.equal(isDigestDue(ON_DEMAND_ONLY, now - 365 * 24 * 60 * 60 * 1000, now), false);
+  assert.equal(
+    isDigestDue(ON_DEMAND_ONLY, now - 365 * 24 * 60 * 60 * 1000, now),
+    false,
+  );
 });
 
 test("a user who has never been mailed is due, unless they opted out", () => {
@@ -197,4 +244,74 @@ test("an unknown or missing frequency does not start mailing people", () => {
   const now = 1_000_000_000_000;
   assert.equal(isDigestDue(undefined, undefined, now), false);
   assert.equal(isDigestDue("Twice an hour", undefined, now), false);
+});
+
+// Titles and terms below are verbatim from a live Firecrawl extraction of
+// aldi.us, so the safety rule is exercised against the shape of data the
+// pipeline actually receives rather than invented examples.
+const REAL_COUPONS = [
+  {
+    title: "Emporium Selection Bacon Bread Cheese",
+    itemTerms: ["bacon", "bread", "cheese"],
+  },
+  {
+    title: "Simply Nature Organic Raspberry Sweet Tea",
+    itemTerms: ["raspberry", "tea"],
+  },
+  {
+    title: "Specially Selected Wild Caught Ahi Tuna Steaks",
+    itemTerms: ["ahi", "tuna", "steak"],
+  },
+  {
+    title: "Simply Nature Organic Jasmine Rice",
+    itemTerms: ["jasmine", "rice"],
+  },
+  {
+    title: "Burman's Teriyaki Stir Fry Sauce",
+    itemTerms: ["teriyaki", "sauce"],
+  },
+  { title: "Chef's Cupboard Chicken Broth", itemTerms: ["chicken", "broth"] },
+  {
+    title: "Benton's Orange Jaffa Cakes",
+    itemTerms: ["orange", "jaffa", "cake"],
+  },
+];
+
+test("real extracted coupons: dairy allergy withholds the cheese", () => {
+  const safe = excludeAllergens(REAL_COUPONS, ["Milk or dairy"]);
+  const titles = safe.map((c) => c.title);
+  assert.ok(!titles.includes("Emporium Selection Bacon Bread Cheese"));
+  assert.ok(titles.includes("Simply Nature Organic Jasmine Rice"));
+});
+
+test("real extracted coupons: fish allergy withholds the tuna", () => {
+  const safe = excludeAllergens(REAL_COUPONS, ["Fish"]);
+  assert.ok(!safe.some((c) => c.title.includes("Tuna")));
+  assert.ok(safe.some((c) => c.title.includes("Jasmine Rice")));
+});
+
+test("real extracted coupons: soy allergy catches teriyaki, which never says soy", () => {
+  // The word "soy" appears nowhere in the title or the terms. Matching on the
+  // dish name is the only thing that catches it.
+  const safe = excludeAllergens(REAL_COUPONS, ["Soy"]);
+  assert.ok(!safe.some((c) => c.title.includes("Teriyaki")));
+});
+
+test("real extracted coupons: a clean profile keeps everything", () => {
+  assert.equal(
+    excludeAllergens(REAL_COUPONS, ["Peanuts"]).length,
+    REAL_COUPONS.length,
+  );
+});
+
+test("known trade-off: 'gluten free' trips the gluten rule", () => {
+  // Over-exclusion in the safe direction, and a real cost: a coeliac user loses
+  // the gluten-free pasta deal they most wanted. Negation matching would fix it
+  // and would also be the thing that lets real gluten through, so the rule
+  // stands as written and this test pins the behaviour rather than hiding it.
+  const glutenFreePasta = {
+    title: "Simply Nature Gluten Free Chickpea Rotini",
+    itemTerms: ["chickpea", "rotini"],
+  };
+  assert.equal(violatesAllergies(glutenFreePasta, ["Wheat or gluten"]), true);
 });
