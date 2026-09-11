@@ -53,6 +53,21 @@ export const RECIPE_DOMAINS: readonly string[] = [
 export const NOT_A_PRODUCT =
   /\brecipes?\b|\bhow to\b|\bideas\b|\bguide\b|\bblog\b|\btips\b|\bbest \d|\bwhat (?:is|are)\b/i;
 
+/**
+ * URLs that are a roundup rather than one recipe.
+ *
+ * "23 weeknight chicken dinners" pages carry no single schema.org/Recipe, so
+ * scraping one costs a credit and yields nothing. They rank well for vague
+ * prompts, which is exactly when we can least afford to waste the budget, so
+ * they are dropped before the scrape rather than discovered after it.
+ *
+ * Matches the hyphenated "-recipes" slug and gallery paths, never a bare
+ * "/recipes/" path segment — that is just how Bon Appetit and others organise
+ * perfectly good single recipes.
+ */
+export const LOOKS_LIKE_ROUNDUP =
+  /\/g\d{5,}\/|\/slideshow\/|\/(?:roundups?|collections?|galleries)\/|-recipes(?:-\d+)?\/?$|-(?:ideas|dinners|meals)(?:-\d+)?\/?$/i;
+
 /** Path segments retailers use for an actual product page. */
 export const PRODUCT_PATH = /\/(?:ip|p|product|products|shop|item|dp|pd)\//i;
 

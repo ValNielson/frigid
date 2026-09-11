@@ -20,6 +20,7 @@ import { internal } from "./_generated/api";
 import { optionalEnv, requireEnv } from "./env";
 import {
   DOMAIN_SET_TAG,
+  LOOKS_LIKE_ROUNDUP,
   NOT_A_PRODUCT,
   PRODUCT_PATH,
   RECIPE_DOMAINS,
@@ -107,6 +108,10 @@ export const search = internalAction({
       // from a domain-restricted search — so enforce the allowlist ourselves.
       // It is also what guarantees every candidate publishes recipe JSON-LD.
       const allowed = found.results.filter((result) => {
+        // Roundups rank well for vague prompts and carry no single recipe, so
+        // dropping them here saves a credit each rather than discovering it
+        // after we have already paid to scrape them.
+        if (LOOKS_LIKE_ROUNDUP.test(result.url)) return false;
         const domain = domainOf(result.url);
         return RECIPE_DOMAINS.some(
           (allowedDomain) =>
