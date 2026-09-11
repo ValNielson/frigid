@@ -5,6 +5,7 @@ import { useAction, useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { clearSessionToken, useSessionToken } from "@/app/lib/session";
 import { buildOpening, realAllergies } from "@/convex/onboardingSummary";
+import { RecipeSearchCard } from "@/app/components/RecipeSearchCard";
 
 const cardClass =
   "rounded-3xl border border-border-subtle bg-surface p-7 shadow-sm";
@@ -93,23 +94,18 @@ export function HomeScreen() {
           )}
         </div>
 
-        {/* Honest placeholders. These are the next things to build, and saying
-            so beats a dashboard of buttons that do nothing. */}
-        <div className="mt-6 grid gap-4 sm:grid-cols-2">
-          <div className={cardClass}>
-            <h3 className="font-medium">What can I make tonight?</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">
-              Tell us what&rsquo;s in the fridge and we&rsquo;ll match it against
-              recipes that fit your profile. Coming next.
-            </p>
-          </div>
-          <div className={cardClass}>
-            <h3 className="font-medium">Your weekly picks</h3>
-            <p className="mt-2 text-sm leading-relaxed text-muted">
-              Seasonal ideas from the stores you shop, on the schedule you chose.
-              Coming next.
-            </p>
-          </div>
+        <div className="mt-6">
+          <RecipeSearchCard />
+        </div>
+
+        {/* Still honest about what is not built. Saying so beats a dashboard of
+            buttons that do nothing. */}
+        <div className={`${cardClass} mt-6`}>
+          <h3 className="font-medium">Your weekly picks</h3>
+          <p className="mt-2 text-sm leading-relaxed text-muted">
+            Seasonal ideas from the stores you shop, on the schedule you chose.
+            Coming next.
+          </p>
         </div>
 
         <p className="mt-8 text-center text-xs text-muted">
