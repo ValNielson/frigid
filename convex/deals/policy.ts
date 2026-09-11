@@ -427,3 +427,21 @@ export function isDigestDue(
 
   return now - lastDigestAt >= interval;
 }
+
+/**
+ * The frequency values the cron is allowed to mail, derived from the interval
+ * table so the two cannot drift. ON_DEMAND_ONLY is absent by construction,
+ * which is what lets the digest query hit by_email_frequency once per cadence
+ * instead of scanning every user.
+ */
+export const MAILABLE_FREQUENCIES: readonly string[] =
+  Object.keys(DIGEST_INTERVAL_MS);
+
+/**
+ * Read bounds. Both tables grow without a natural ceiling — merchants with
+ * every new city, coupons with every scrape — so the queries that feed one run
+ * take a slice rather than the table. Set well above what a single digest can
+ * use, so hitting either means something upstream is wrong.
+ */
+export const MAX_MERCHANTS_READ = 500;
+export const MAX_COUPON_POOL = 500;

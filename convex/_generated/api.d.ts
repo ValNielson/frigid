@@ -10,6 +10,8 @@
 
 import type * as agentmail from "../agentmail.js";
 import type * as agentmailEvents from "../agentmailEvents.js";
+import type * as deals_data from "../deals/data.js";
+import type * as deals_policy from "../deals/policy.js";
 import type * as env from "../env.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as hash from "../hash.js";
@@ -34,6 +36,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentmail: typeof agentmail;
   agentmailEvents: typeof agentmailEvents;
+  "deals/data": typeof deals_data;
+  "deals/policy": typeof deals_policy;
   env: typeof env;
   firecrawl: typeof firecrawl;
   hash: typeof hash;
