@@ -2,10 +2,10 @@
 
 import OpenAI from "openai";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { requireEnv } from "./env";
 
-export const complete = action({
+export const complete = internalAction({
   args: {
     prompt: v.string(),
     instructions: v.optional(v.string()),

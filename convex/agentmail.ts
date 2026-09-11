@@ -2,14 +2,14 @@
 
 import { AgentMailClient, type AgentMail } from "agentmail";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { requireEnv } from "./env";
 
 function client() {
   return new AgentMailClient({ apiKey: requireEnv("AGENTMAIL_API_KEY") });
 }
 
-export const createInbox = action({
+export const createInbox = internalAction({
   args: {
     username: v.optional(v.string()),
     domain: v.optional(v.string()),
@@ -23,7 +23,7 @@ export const createInbox = action({
 });
 
 /** Lists inboxes so the configured AGENTMAIL_INBOX_ID can be confirmed. */
-export const listInboxes = action({
+export const listInboxes = internalAction({
   args: {},
   returns: v.array(v.object({ inboxId: v.string(), email: v.string() })),
   handler: async () => {
@@ -35,7 +35,7 @@ export const listInboxes = action({
   },
 });
 
-export const sendMessage = action({
+export const sendMessage = internalAction({
   args: {
     inboxId: v.string(),
     to: v.array(v.string()),
@@ -51,7 +51,7 @@ export const sendMessage = action({
   },
 });
 
-export const replyToMessage = action({
+export const replyToMessage = internalAction({
   args: {
     inboxId: v.string(),
     messageId: v.string(),
@@ -65,7 +65,7 @@ export const replyToMessage = action({
   },
 });
 
-export const registerWebhook = action({
+export const registerWebhook = internalAction({
   args: {
     url: v.string(),
     eventTypes: v.array(v.string()),

@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { renderSummaryHtml, renderSummaryText } from "./onboardingSummary";
 
@@ -27,7 +27,7 @@ export const sendSummary = internalAction({
       data.unsubscribeToken,
     )}`;
 
-    await ctx.runAction(api.agentmail.sendMessage, {
+    await ctx.runAction(internal.agentmail.sendMessage, {
       inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
       to: [data.email],
       subject: "Your frigid taste profile",
