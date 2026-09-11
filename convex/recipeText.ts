@@ -196,6 +196,14 @@ export function parseIngredientLine(rawLine: string): Ingredient {
   working = working.replace(/\([^)]*\)/g, " ");
   // Footnote markers linking to a note further down the page.
   working = working.replace(/\*+/g, " ");
+  // Phrases that end the useful part of the line. Filtering these word by word
+  // leaves debris — "salt and pepper to taste" became "salt and pepper to", and
+  // "lemon zest plus 2 tablespoons lemon juice" became both halves run together
+  // — so cut the line at the phrase instead.
+  working = working.replace(
+    /\s+(?:to taste|for serving|for garnish|for the pan|as needed|if needed|plus more|or more|plus\s|divided\b).*$/i,
+    " ",
+  );
   // Drop trailing comma clauses that describe preparation. Segments are
   // removed from the end only while they read as instructions, so a mid-phrase
   // comma ("bone-in, skin-on chicken") keeps the whole descriptor.
