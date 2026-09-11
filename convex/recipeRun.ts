@@ -337,8 +337,21 @@ export const readRecipes = internalAction({
       }
 
       if (accepted === 0) {
+        // Distinguish "nothing was safe for you" from "the sites would not
+        // cooperate". The first is a real answer about the recipes we found and
+        // the user should hear it as one, not as a generic failure.
+        const job2 = await ctx.runQuery(internal.recipeJobs.forRun, {
+          jobId: args.jobId,
+        });
+        const skipped = job2?.skipped ?? [];
+        const allergenDrops = skipped.filter((entry) =>
+          entry.reason.startsWith("Contains"),
+        ).length;
+
         throw new Error(
-          "We found recipes but could not read any that fit your profile. Try a different description.",
+          allergenDrops > 0 && allergenDrops === skipped.length
+            ? `Every recipe we found clashed with your allergies, so we did not send any. Try naming a different dish.`
+            : "We found recipes but could not read any that fit your profile. Try a different description.",
         );
       }
 

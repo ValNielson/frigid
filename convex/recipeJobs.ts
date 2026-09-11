@@ -250,6 +250,7 @@ export const forRun = internalQuery({
       candidates: v.array(candidate),
       recipes: v.array(jobRecipe),
       shopping: v.array(shoppingEntry),
+      skipped: v.array(v.object({ url: v.string(), reason: v.string() })),
       llmCallsUsed: v.number(),
       answers: v.record(
         v.string(),
@@ -280,6 +281,7 @@ export const forRun = internalQuery({
       candidates: job.candidates,
       recipes: job.recipes,
       shopping: job.shopping,
+      skipped: job.skipped,
       llmCallsUsed: job.llmCallsUsed,
       answers: preferences.answers,
       email: user.email,

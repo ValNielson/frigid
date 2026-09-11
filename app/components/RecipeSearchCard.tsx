@@ -108,8 +108,26 @@ function JobPanel({ job }: { job: Job }) {
         <p role="status" aria-live="polite" className="text-sm text-danger">
           {job.error ?? "That search didn't work out."}
         </p>
-        <p className="mt-1 text-xs text-muted">
-          Nothing was charged for a search that failed. Try again whenever.
+        {job.skipped.length > 0 ? (
+          <ul className="mt-3 space-y-1">
+            {job.skipped.map((entry) => (
+              <li key={entry.url} className="text-xs text-muted">
+                {entry.reason} &mdash;{" "}
+                <a
+                  href={entry.url}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="text-frost underline-offset-4 hover:underline"
+                >
+                  {hostOf(entry.url)}
+                </a>
+              </li>
+            ))}
+          </ul>
+        ) : null}
+        <p className="mt-3 text-xs text-muted">
+          Try again whenever &mdash; recipes we have already read are cached, so
+          another search costs nothing extra.
         </p>
       </Panel>
     );
@@ -295,6 +313,15 @@ function Panel({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
+}
+
+/** Bare host, so a skipped recipe is identifiable without a wall of URL. */
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return url;
+  }
 }
 
 function formatTime(minutes: number): string {
