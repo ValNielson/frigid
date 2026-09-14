@@ -24,12 +24,9 @@ export const RECIPES_PER_JOB = 4;
  */
 export const MAX_SCRAPES_PER_JOB = 5;
 
-/**
- * Gap between scrapes. The free tier allows 10 requests a minute and we have
- * measured it rejecting bursts, so pace rather than retry — a rejected request
- * still costs us the wall-clock time, and retries are how budgets evaporate.
- */
-export const SCRAPE_SPACING_MS = 1_500;
+// Scrape spacing used to live here. It was a hand-tuned stand-in for a limit
+// both pipelines share, which a constant inside one of them could never
+// enforce — see convex/firecrawlRate.ts.
 
 /**
  * Most recipes we will take from any one site.
@@ -81,6 +78,22 @@ export const DAILY_CREDIT_BUDGET = 120;
 
 /** A job with no progress for this long is reported as stalled rather than running. */
 export const STALL_AFTER_MS = 5 * 60 * 1000;
+
+/**
+ * The same, for the deals step.
+ *
+ * Longer because a city nobody has scraped yet means a full coupon run before
+ * this step can answer, and five minutes is inside that. Given a longer
+ * threshold rather than an exemption: a step that can never be reported stalled
+ * is a step that hangs forever when it does crash.
+ */
+export const DEAL_STALL_AFTER_MS = 15 * 60 * 1000;
+
+/**
+ * Coupons attached to one recipe job. A shopping list is about thirty items and
+ * the email is already long; this is the useful handful, not the whole pool.
+ */
+export const MAX_DEALS_PER_JOB = 6;
 
 /** What Firecrawl bills, so the job's own tally can be checked against the account. */
 export const SEARCH_CREDIT_COST = 2;

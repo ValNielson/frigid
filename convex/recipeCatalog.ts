@@ -66,7 +66,7 @@ export const NOT_A_PRODUCT =
  * perfectly good single recipes.
  */
 export const LOOKS_LIKE_ROUNDUP =
-  /\/g\d{5,}\/|\/slideshow\/|\/(?:roundups?|collections?|galleries)\/|-recipes(?:-\d+)?\/?$|-(?:ideas|dinners|meals)(?:-\d+)?\/?$/i;
+  /\/g\d{5,}\/|\/slideshow\/|\/(?:roundups?|collections?|galleries|category|categories|tag|tags)\/|-recipes(?:-\d+)?\/?$|-(?:ideas|dinners|meals|meal-plan)(?:-\d+)?\/?$/i;
 
 /** Path segments retailers use for an actual product page. */
 export const PRODUCT_PATH = /\/(?:ip|p|product|products|shop|item|dp|pd)\//i;
@@ -112,10 +112,6 @@ export const STORE_CATALOG: readonly StoreEntry[] = [
   { slug: "co-op", label: "Local co-op or farmers market", domain: null, search: null },
   { slug: "intl-market", label: "Asian or international market", domain: null, search: null },
 ];
-
-export function storeForLabel(label: string): StoreEntry | undefined {
-  return STORE_CATALOG.find((s) => s.label === label);
-}
 
 /**
  * Ingredient keyword to store department. First match wins, so the list is
@@ -193,41 +189,10 @@ export function departmentFor(item: string): string {
 /**
  * Allergy label to the words that betray it in an ingredient line.
  *
- * Keys match the options in the `allergies` question. This is deliberately
- * broad: a false positive costs the user one recipe, a false negative costs
- * them an allergic reaction, so the list errs toward dropping.
+ * Re-exported rather than defined: this used to be a second table that had
+ * drifted from the coupon pipeline's copy. See convex/allergens.ts.
  */
-export const ALLERGEN_KEYWORDS: Readonly<Record<string, readonly string[]>> = {
-  Peanuts: ["peanut", "groundnut", "satay"],
-  "Tree nuts": [
-    "almond", "walnut", "pecan", "cashew", "pistachio", "hazelnut", "macadamia",
-    "brazil nut", "pine nut", "nutella", "marzipan", "praline", "frangipane",
-  ],
-  "Milk or dairy": [
-    "milk", "butter", "cream", "cheese", "yogurt", "yoghurt", "ghee", "custard",
-    "parmesan", "mozzarella", "cheddar", "feta", "ricotta", "mascarpone",
-    "buttermilk", "half and half", "whey", "casein",
-  ],
-  Eggs: ["egg", "mayonnaise", "meringue", "aioli", "albumen"],
-  "Wheat or gluten": [
-    "wheat", "flour", "barley", "rye", "bread", "pasta", "noodle", "couscous",
-    "breadcrumb", "panko", "cracker", "tortilla", "seitan", "farro", "semolina",
-    "spelt", "orzo", "phyllo", "puff pastry", "soy sauce",
-  ],
-  Soy: ["soy", "soya", "tofu", "edamame", "miso", "tempeh", "tamari"],
-  Fish: [
-    "fish", "salmon", "tuna", "cod", "tilapia", "anchovy", "anchovies",
-    "sardine", "halibut", "trout", "mackerel", "worcestershire",
-  ],
-  Shellfish: [
-    "shrimp", "prawn", "crab", "lobster", "clam", "mussel", "oyster",
-    "scallop", "crawfish", "squid", "calamari", "octopus",
-  ],
-  Sesame: ["sesame", "tahini", "halva", "za'atar", "zaatar"],
-  Mustard: ["mustard"],
-  Celery: ["celery", "celeriac"],
-  Sulfites: ["sulfite", "sulphite", "wine", "dried apricot"],
-};
+export { ALLERGEN_TERMS as ALLERGEN_KEYWORDS } from "./allergens";
 
 /**
  * Diet label to the term we append to the search query. Diets with no useful

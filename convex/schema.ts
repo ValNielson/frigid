@@ -34,9 +34,18 @@ export default defineSchema({
     lastSentAt: v.optional(v.number()),
     sendsInWindow: v.number(),
     windowStartedAt: v.number(),
+    // Submission throttling, which is a different question from resending and
+    // so carries its own window. Optional because rows written before it
+    // existed have no value; consumeCode treats absent as zero.
+    verifyAttemptsInWindow: v.optional(v.number()),
+    verifyWindowStartedAt: v.optional(v.number()),
     // When the deals digest last went out, so the daily cron can tell who is
     // due without reading a second table.
     lastDigestAt: v.optional(v.number()),
+    // When the cron last *tried*. Separate from lastDigestAt because a run that
+    // matched nothing sends no mail, and keying the cadence on sends alone left
+    // those users due forever and re-run every day.
+    lastDigestAttemptAt: v.optional(v.number()),
   })
     .index("by_email", ["email"])
     .index("by_unsubscribe_token", ["unsubscribeToken"])
@@ -49,10 +58,14 @@ export default defineSchema({
     tokenHash: v.string(),
     expiresAt: v.number(),
     createdAt: v.number(),
+    // Set at creation and not since: resolving a session happens in a query,
+    // which cannot write. Left in place rather than dropped because removing a
+    // field fails the schema push while rows still carry it.
     lastSeenAt: v.number(),
   })
     .index("by_token_hash", ["tokenHash"])
-    .index("by_user", ["userId"]),
+    .index("by_user", ["userId"])
+    .index("by_expires_at", ["expiresAt"]),
 
   // Onboarding answers plus the two derived artifacts we do not want to
   // recompute: the human-readable report and the compact line that gets injected
@@ -113,6 +126,15 @@ export default defineSchema({
     itemTerms: v.array(v.string()),
     tags: v.array(v.string()),
     expiresAt: v.optional(v.number()),
+    // What the offer is actually for, as one food word. Matching reads this
+    // rather than everything the title mentions, because "Goldfish Cheddar
+    // Crackers" mentions cheddar and is a cracker. Optional: rows written before
+    // the field existed fall back to itemTerms.
+    primaryItem: v.optional(v.string()),
+    // The metro this offer was scraped for. A chain runs different weekly ads in
+    // different cities, and without this a Grand Rapids price was served to a
+    // Cleveland shopper. Optional for the same backward-compatibility reason.
+    metroKey: v.optional(v.string()),
     sourceKind: v.string(),
     sourceUrl: v.optional(v.string()),
     messageId: v.optional(v.string()),
@@ -125,6 +147,17 @@ export default defineSchema({
     .index("by_user", ["userId"])
     .index("by_merchant", ["merchantId"])
     .index("by_expires_at", ["expiresAt"]),
+
+  // When a merchant was last scraped *for a given metro*.
+  //
+  // Freshness cannot live on the merchant row: identity there is the domain
+  // alone, so scraping Kroger for Grand Rapids marked it fresh everywhere and a
+  // Cleveland run would skip it inside the TTL and store nothing.
+  merchantScrapes: defineTable({
+    merchantId: v.id("merchants"),
+    metroKey: v.string(),
+    lastScrapedAt: v.number(),
+  }).index("by_merchant_metro", ["merchantId", "metroKey"]),
 
   // Cache for normalizing the free-text onboarding location. "Grand Rapids, MI",
   // "grand rapids", and "49503" are three spellings of one place, and without
@@ -204,6 +237,10 @@ export default defineSchema({
       v.literal("searching"),
       v.literal("reading"),
       v.literal("shopping"),
+      // Looking for coupons covering this job's shopping list. Its own status
+      // because a cold city has to be scraped first, which is slow enough that
+      // "shopping" would look stuck.
+      v.literal("dealing"),
       v.literal("emailing"),
       v.literal("done"),
       v.literal("failed"),
@@ -256,6 +293,21 @@ export default defineSchema({
     // Recipes we found but did not send, with the reason. An allergen drop is
     // something the user deserves to be told about rather than a silent gap.
     skipped: v.array(v.object({ url: v.string(), reason: v.string() })),
+    // Coupons covering this job's own shopping list. Optional because rows
+    // written before the deals step existed genuinely have none, and a required
+    // field would fail the schema push against them.
+    deals: v.optional(
+      v.array(
+        v.object({
+          title: v.string(),
+          discount: v.optional(v.string()),
+          details: v.optional(v.string()),
+          code: v.optional(v.string()),
+          sourceUrl: v.optional(v.string()),
+          merchantName: v.optional(v.string()),
+        }),
+      ),
+    ),
     creditsUsed: v.number(),
     llmCallsUsed: v.number(),
     error: v.optional(v.string()),
@@ -341,6 +393,33 @@ export default defineSchema({
     fetchedAt: v.number(),
     expiresAt: v.number(),
   }).index("by_lookup_key", ["lookupKey"]),
+
+  // Food words learned from recipes the product has actually read.
+  //
+  // The static vocabulary in foodVocabulary.ts is derived from department and
+  // allergen keywords, which cover staples and miss everything else — gnocchi,
+  // samosa and watermelon are all absent from it. Every parsed recipe
+  // contributes its ingredients here, so the vocabulary widens on its own
+  // instead of waiting for someone to notice a gap.
+  foodWords: defineTable({
+    word: v.string(),
+    firstSeenAt: v.number(),
+  }).index("by_word", ["word"]),
+
+  // Every Firecrawl *request*, which is a different limit from credits.
+  //
+  // The free tier allows ten requests a minute and both pipelines draw on it.
+  // Pacing each loop separately could never enforce that: the recipe pipeline
+  // spends its requests and then immediately triggers a coupon run, inside the
+  // same minute. Same argument as creditLedger — one shared limit needs one
+  // shared table.
+  firecrawlRequests: defineTable({
+    // When the request fires, which may be in the future: a reservation that has
+    // to wait is claimed for the moment it will actually run, so a concurrent
+    // reservation sees it and stacks behind it.
+    at: v.number(),
+    weight: v.number(),
+  }).index("by_at", ["at"]),
 
   // Every Firecrawl credit this app spends, whichever feature spent it.
   //

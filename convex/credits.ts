@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import type { QueryCtx } from "./_generated/server";
 import { DAILY_CREDIT_BUDGET } from "./recipePolicy";
 
 /**
@@ -22,29 +23,39 @@ export const record = internalMutation({
   },
 });
 
-/** Credits spent in the last 24 hours, across every feature. */
+/**
+ * Credits spent in the last 24 hours, across every feature.
+ *
+ * A plain function rather than only a Convex query, because a query cannot call
+ * another query — and the run guard needs this same sum alongside a cooldown
+ * check in a single read. The two queries below are thin wrappers over it, so
+ * there is one definition of what "spent today" means.
+ */
+export async function creditsSpentToday(
+  ctx: QueryCtx,
+  now: number,
+): Promise<number> {
+  const rows = await ctx.db
+    .query("creditLedger")
+    .withIndex("by_at", (q) => q.gt("at", now - DAY_MS))
+    .collect();
+  return rows.reduce((total, row) => total + row.credits, 0);
+}
+
+/** Whether there is room in today's budget to start more paid work. */
+export function hasBudgetLeft(spent: number): boolean {
+  return spent < DAILY_CREDIT_BUDGET;
+}
+
 export const spentToday = internalQuery({
   args: { now: v.number() },
   returns: v.number(),
-  handler: async (ctx, args) => {
-    const rows = await ctx.db
-      .query("creditLedger")
-      .withIndex("by_at", (q) => q.gt("at", args.now - DAY_MS))
-      .collect();
-    return rows.reduce((total, row) => total + row.credits, 0);
-  },
+  handler: async (ctx, args) => await creditsSpentToday(ctx, args.now),
 });
 
-/** Whether there is room in today's budget to start more paid work. */
 export const withinBudget = internalQuery({
   args: { now: v.number() },
   returns: v.boolean(),
-  handler: async (ctx, args): Promise<boolean> => {
-    const rows = await ctx.db
-      .query("creditLedger")
-      .withIndex("by_at", (q) => q.gt("at", args.now - DAY_MS))
-      .collect();
-    const spent = rows.reduce((total, row) => total + row.credits, 0);
-    return spent < DAILY_CREDIT_BUDGET;
-  },
+  handler: async (ctx, args): Promise<boolean> =>
+    hasBudgetLeft(await creditsSpentToday(ctx, args.now)),
 });

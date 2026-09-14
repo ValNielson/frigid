@@ -19,6 +19,7 @@ import { userForToken } from "./sessions";
 import type { Doc } from "./_generated/dataModel";
 import {
   DAILY_CREDIT_BUDGET,
+  DEAL_STALL_AFTER_MS,
   MAX_JOBS_PER_USER_PER_DAY,
   MAX_PROMPT_LENGTH,
   MIN_PROMPT_LENGTH,
@@ -32,10 +33,20 @@ const jobStatus = v.union(
   v.literal("searching"),
   v.literal("reading"),
   v.literal("shopping"),
+  v.literal("dealing"),
   v.literal("emailing"),
   v.literal("done"),
   v.literal("failed"),
 );
+
+const jobDeal = v.object({
+  title: v.string(),
+  discount: v.optional(v.string()),
+  details: v.optional(v.string()),
+  code: v.optional(v.string()),
+  sourceUrl: v.optional(v.string()),
+  merchantName: v.optional(v.string()),
+});
 
 const ingredient = v.object({
   raw: v.string(),
@@ -80,6 +91,7 @@ const ACTIVE: readonly string[] = [
   "searching",
   "reading",
   "shopping",
+  "dealing",
   "emailing",
 ];
 
@@ -205,6 +217,7 @@ const jobView = v.object({
   recipes: v.array(jobRecipe),
   shopping: v.array(shoppingEntry),
   skipped: v.array(v.object({ url: v.string(), reason: v.string() })),
+  deals: v.array(jobDeal),
   creditsUsed: v.number(),
   error: v.optional(v.string()),
   emailed: v.boolean(),
@@ -228,10 +241,12 @@ function toView(job: Doc<"recipeJobs">) {
       : {}),
     stalled:
       ACTIVE.includes(job.status) &&
-      Date.now() - job.updatedAt > STALL_AFTER_MS,
+      Date.now() - job.updatedAt >
+        (job.status === "dealing" ? DEAL_STALL_AFTER_MS : STALL_AFTER_MS),
     recipes: job.recipes,
     shopping: job.shopping,
     skipped: job.skipped,
+    deals: job.deals ?? [],
     creditsUsed: job.creditsUsed,
     ...(job.error !== undefined ? { error: job.error } : {}),
     emailed: job.emailedAt !== undefined,
@@ -264,6 +279,9 @@ export const forRun = internalQuery({
   returns: v.union(
     v.null(),
     v.object({
+      // The deals step keys every lookup on the user, and the job row is the
+      // only thing it is handed.
+      userId: v.id("users"),
       prompt: v.string(),
       searchQuery: v.string(),
       status: jobStatus,
@@ -271,6 +289,7 @@ export const forRun = internalQuery({
       recipes: v.array(jobRecipe),
       shopping: v.array(shoppingEntry),
       skipped: v.array(v.object({ url: v.string(), reason: v.string() })),
+      deals: v.array(jobDeal),
       llmCallsUsed: v.number(),
       answers: v.record(
         v.string(),
@@ -298,6 +317,7 @@ export const forRun = internalQuery({
     if (preferences === null) return null;
 
     return {
+      userId: job.userId,
       prompt: job.prompt,
       searchQuery: job.searchQuery,
       status: job.status,
@@ -305,6 +325,7 @@ export const forRun = internalQuery({
       recipes: job.recipes,
       shopping: job.shopping,
       skipped: job.skipped,
+      deals: job.deals ?? [],
       llmCallsUsed: job.llmCallsUsed,
       answers: preferences.answers,
       email: user.email,
@@ -401,6 +422,19 @@ export const setShopping = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.jobId, {
       shopping: args.shopping,
+      updatedAt: Date.now(),
+    });
+    return null;
+  },
+});
+
+/** Shaped like setShopping: the step computes, this records. */
+export const setDeals = internalMutation({
+  args: { jobId: v.id("recipeJobs"), deals: v.array(jobDeal) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.jobId, {
+      deals: args.deals,
       updatedAt: Date.now(),
     });
     return null;

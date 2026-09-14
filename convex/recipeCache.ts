@@ -12,6 +12,8 @@
 
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
+import type { MutationCtx } from "./_generated/server";
+import { foodWords as wordsIn } from "./words";
 import {
   PAGE_TTL_MS,
   RECIPE_TTL_MS,
@@ -178,9 +180,56 @@ export const putRecipe = internalMutation({
       .unique();
     if (existing === null) await ctx.db.insert("recipeCache", fields);
     else await ctx.db.patch(existing._id, fields);
+
+    // Whatever this recipe called for is food by definition. Recorded here
+    // because it is the one place every parsed recipe passes through, and it
+    // costs a handful of writes against a page we already paid to read.
+    await learnFoodWords(ctx, args.recipe.ingredients);
     return null;
   },
 });
+
+/** Words one recipe may contribute, so a pathological page cannot flood this. */
+const MAX_NEW_WORDS_PER_RECIPE = 40;
+
+async function learnFoodWords(
+  ctx: MutationCtx,
+  ingredients: readonly { item: string }[],
+): Promise<void> {
+  const candidates = new Set<string>();
+  for (const ingredient of ingredients) {
+    for (const word of wordsIn(ingredient.item)) candidates.add(word);
+  }
+
+  let added = 0;
+  for (const word of candidates) {
+    if (added >= MAX_NEW_WORDS_PER_RECIPE) break;
+    const seen = await ctx.db
+      .query("foodWords")
+      .withIndex("by_word", (q) => q.eq("word", word))
+      .unique();
+    if (seen !== null) continue;
+    await ctx.db.insert("foodWords", { word, firstSeenAt: Date.now() });
+    added += 1;
+  }
+}
+
+/**
+ * The learned half of the food vocabulary.
+ *
+ * Bounded: distinct food words converge on a few thousand however many recipes
+ * are read, so this stays a small read rather than growing with the cache.
+ */
+export const knownFoodWords = internalQuery({
+  args: {},
+  returns: v.array(v.string()),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("foodWords").take(MAX_LEARNED_WORDS);
+    return rows.map((row) => row.word);
+  },
+});
+
+const MAX_LEARNED_WORDS = 3_000;
 
 // --------------------------------------------------------------- store probes
 

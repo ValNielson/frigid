@@ -8,8 +8,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --test \"tests/*.test.ts\"",
-    "deploy": "npx @convex-dev/static-hosting deploy"
+    "test": "vitest run",
+    "deploy": "npx @convex-dev/static-hosting deploy",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@convex-dev/static-hosting": "^0.2.1",
@@ -23,14 +24,17 @@
     "svix": "^2.1.0"
   },
   "devDependencies": {
+    "@edge-runtime/vm": "^5.0.0",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "babel-plugin-react-compiler": "1.0.0",
+    "convex-test": "^0.0.58",
     "eslint": "^9",
     "eslint-config-next": "16.3.3",
     "tailwindcss": "^4",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^3.2.7"
   }
 }

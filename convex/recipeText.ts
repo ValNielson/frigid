@@ -13,6 +13,7 @@ import {
   TIME_SEARCH_TERMS,
 } from "./recipeCatalog";
 import { NO_ALLERGIES, type Answers } from "./onboardingQuestions";
+import { singular } from "./words";
 
 // ---------------------------------------------------------------- text basics
 
@@ -256,11 +257,6 @@ export function parseIngredientLine(rawLine: string): Ingredient {
   };
 }
 
-const IRREGULAR_SINGULARS: Record<string, string> = {
-  leaves: "leaf", loaves: "loaf", potatoes: "potato", tomatoes: "tomato",
-  berries: "berry", cherries: "cherry", anchovies: "anchovy",
-};
-
 /** Cache key for one ingredient at one store. Naive singularization is fine here. */
 export function slugifyItem(item: string): string {
   const words = item
@@ -268,14 +264,7 @@ export function slugifyItem(item: string): string {
     .replace(/[^a-z0-9\s-]/g, " ")
     .split(/\s+/)
     .filter((word) => word.length > 0)
-    .map((word) => {
-      const irregular = IRREGULAR_SINGULARS[word];
-      if (irregular !== undefined) return irregular;
-      if (word.endsWith("ss") || word.length <= 3) return word;
-      if (word.endsWith("es") && /(?:ch|sh|x|s)es$/.test(word)) return word.slice(0, -2);
-      if (word.endsWith("s")) return word.slice(0, -1);
-      return word;
-    });
+    .map(singular);
 
   return words.join("-").slice(0, 80);
 }

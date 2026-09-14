@@ -5,6 +5,11 @@ import { internalAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { renderSummaryHtml, renderSummaryText } from "./onboardingSummary";
+import {
+  unsubscribeHeaders,
+  unsubscribeLine,
+  unsubscribeUrl,
+} from "./emailShell";
 
 /**
  * Mails the finished taste profile. Scheduled from preferences.save rather than
@@ -22,21 +27,15 @@ export const sendSummary = internalAction({
     // Someone who has opted out does not get mail, even mail they just caused.
     if (!data.subscribed) return null;
 
-    const siteUrl = requireEnv("CONVEX_SITE_URL").replace(/\/$/, "");
-    const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${encodeURIComponent(
-      data.unsubscribeToken,
-    )}`;
+    const optOutUrl = unsubscribeUrl(data.unsubscribeToken);
 
     await ctx.runAction(internal.agentmail.sendMessage, {
       inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
       to: [data.email],
       subject: "Your frigid taste profile",
-      text: `${renderSummaryText(data.answers)}\n\nUnsubscribe: ${unsubscribeUrl}\n`,
-      html: renderSummaryHtml(data.answers, unsubscribeUrl),
-      headers: {
-        "List-Unsubscribe": `<${unsubscribeUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      },
+      text: `${renderSummaryText(data.answers)}\n\n${unsubscribeLine(optOutUrl)}\n`,
+      html: renderSummaryHtml(data.answers, optOutUrl),
+      headers: unsubscribeHeaders(optOutUrl),
     });
     return null;
   },

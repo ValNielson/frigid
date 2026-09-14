@@ -6,12 +6,17 @@ import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
-  FIND_SITE_CREDIT_COST,
+  MAX_CITY_MERCHANTS,
   MAX_MERCHANTS_PER_STORE_PLAN,
-  isDirectorySite,
+  isPlausibleCity,
   locationKey,
-  normalizeDomain,
+  normalizeState,
+  normalizeZip,
+  singleLine,
 } from "./policy";
+
+/** Free text we are willing to paste into a prompt. */
+const MAX_LOCATION_CHARS = 120;
 
 /**
  * Turns a user's onboarding answers into something Firecrawl can execute.
@@ -91,7 +96,10 @@ export const normalizeLocation = internalAction({
     if (cached !== null) return cached;
 
     const raw = await ctx.runAction(internal.openai.structured, {
-      prompt: `Location: ${args.raw}`,
+      // Flattened and capped before it reaches the model. This is the one
+      // field in the product where a user's free text becomes a prompt whose
+      // answer is then cached for everyone.
+      prompt: `Location: ${singleLine(args.raw).slice(0, MAX_LOCATION_CHARS)}`,
       schemaName: "normalized_location",
       schemaJson: LOCATION_SCHEMA,
       instructions:
@@ -108,12 +116,15 @@ export const normalizeLocation = internalAction({
     }
 
     const city = optional(parsed.city);
-    if (city === undefined) return null;
+    // A city that does not read like a place name is discarded rather than
+    // cached: downstream it becomes a shared cache key and the text of the next
+    // prompt, so a sentence here would propagate to every user in that key.
+    if (city === undefined || !isPlausibleCity(city)) return null;
 
     const resolved = {
-      city,
-      state: optional(parsed.state),
-      zip: optional(parsed.zip),
+      city: city.trim(),
+      state: normalizeState(parsed.state),
+      zip: normalizeZip(parsed.zip),
     };
 
     await ctx.runMutation(internal.deals.data.saveLocation, {
@@ -182,7 +193,7 @@ export const planForLocation = internalAction({
 
     const targetUrls = await resolveMerchants(
       ctx,
-      parsed.localMerchants ?? [],
+      (parsed.localMerchants ?? []).slice(0, MAX_CITY_MERCHANTS),
       place,
       key,
       now,
@@ -314,19 +325,11 @@ async function resolveMerchants(
   for (const merchant of merchants) {
     if (merchant.name.trim().length === 0) continue;
 
-    const found = await ctx.runAction(internal.firecrawl.findSite, {
+    // findSite records its own credit and already rejects directory listings.
+    const domain = await ctx.runAction(internal.firecrawlClient.findSite, {
       query: `${merchant.name} ${place}`,
     });
-    await ctx.runMutation(internal.credits.record, {
-      feature: "deals-plan",
-      credits: FIND_SITE_CREDIT_COST,
-      at: now,
-    });
-    const domain = found === null ? null : normalizeDomain(found);
     if (domain === null) continue;
-    // A search for a small shop often puts its Yelp or Facebook listing above
-    // its own site, and a directory sets no prices.
-    if (isDirectorySite(domain)) continue;
     if (domains.includes(domain)) continue;
 
     await ctx.runMutation(internal.deals.data.upsertMerchant, {

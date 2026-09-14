@@ -8,6 +8,7 @@
  * screen and the email cannot drift because they are the same code.
  */
 
+import { emailCard, escapeHtml } from "./emailShell";
 import {
   NO_ALLERGIES,
   QUESTIONS,
@@ -156,14 +157,6 @@ export function renderSummaryText(answers: Answers): string {
   return out.join("\n");
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
 /**
  * Email body. Inline styles with hardcoded hex, matching the palette in
  * globals.css, because Tailwind does not exist in a mail client — the same
@@ -199,23 +192,14 @@ export function renderSummaryHtml(answers: Answers, unsubscribeUrl: string): str
          </div>`
       : "";
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f4f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f1b24;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #dbe7ef;">
-      <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5d7c8f;">frigid</p>
-      <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">Your taste profile</h1>
+  return emailCard({
+    title: "Your taste profile",
+    unsubscribeUrl,
+    footer:
+      "Everything here shapes what we send you, and you can change it any time.",
+    body: `
       ${opening ? `<p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#3d5666;">${escapeHtml(opening)}</p>` : ""}
       ${allergyBanner}
-      ${sectionsHtml}
-      <hr style="border:none;border-top:1px solid #e6eef4;margin:32px 0 16px;" />
-      <p style="margin:0 0 16px;font-size:13px;line-height:1.6;color:#5d7c8f;">
-        Everything here shapes what we send you, and you can change it any time.
-      </p>
-      <p style="margin:0;font-size:12px;line-height:1.6;color:#7d97a7;">
-        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#7d97a7;">Unsubscribe from frigid emails</a>
-      </p>
-    </div>
-  </body>
-</html>`;
+      ${sectionsHtml}`,
+  });
 }

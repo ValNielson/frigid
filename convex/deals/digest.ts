@@ -4,6 +4,14 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import { internal } from "../_generated/api";
 import { requireEnv } from "../env";
+import {
+  emailCard,
+  escapeHtml,
+  safeHref,
+  unsubscribeHeaders,
+  unsubscribeLine,
+  unsubscribeUrl,
+} from "../emailShell";
 
 /**
  * Mails a person the coupons picked for them.
@@ -14,14 +22,6 @@ import { requireEnv } from "../env";
  */
 
 const FROM_NAME = "frigid";
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 const pick = v.object({
   title: v.string(),
@@ -41,7 +41,7 @@ type Pick = {
   reason: string;
 };
 
-function buildEmail(picks: Pick[], unsubscribeUrl: string) {
+function buildEmail(picks: Pick[], optOutUrl: string) {
   const headline =
     picks.length === 1
       ? "One deal worth your time"
@@ -54,11 +54,12 @@ function buildEmail(picks: Pick[], unsubscribeUrl: string) {
       const price = item.discount === undefined ? "" : ` - ${item.discount}`;
       const lines = [`${item.title}${price}`, `  ${item.reason}`];
       if (item.code !== undefined) lines.push(`  Code: ${item.code}`);
-      if (item.sourceUrl !== undefined) lines.push(`  ${item.sourceUrl}`);
+      const href = safeHref(item.sourceUrl);
+      if (href !== null) lines.push(`  ${href}`);
       lines.push("");
       return lines;
     }),
-    `Unsubscribe: ${unsubscribeUrl}`,
+    unsubscribeLine(optOutUrl),
   ].join("\n");
 
   const rows = picks
@@ -71,10 +72,13 @@ function buildEmail(picks: Pick[], unsubscribeUrl: string) {
         item.code === undefined
           ? ""
           : `<p style="margin:8px 0 0;font-size:13px;color:#3d5666;">Code <strong style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${escapeHtml(item.code)}</strong></p>`;
+      // Source URLs come from Firecrawl search results, so the scheme is not
+      // ours to assume. An unlinked title beats a link we did not vet.
+      const href = safeHref(item.sourceUrl);
       const title =
-        item.sourceUrl === undefined
+        href === null
           ? escapeHtml(item.title)
-          : `<a href="${escapeHtml(item.sourceUrl)}" style="color:#0f1b24;text-decoration:none;">${escapeHtml(item.title)}</a>`;
+          : `<a href="${escapeHtml(href)}" style="color:#0f1b24;text-decoration:none;">${escapeHtml(item.title)}</a>`;
 
       return `<li style="margin:0 0 20px;padding:0 0 20px;border-bottom:1px solid #e6eef4;list-style:none;">
         <p style="margin:0;font-size:16px;font-weight:600;line-height:1.4;">${title}${price}</p>
@@ -84,20 +88,13 @@ function buildEmail(picks: Pick[], unsubscribeUrl: string) {
     })
     .join("");
 
-  const html = `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f4f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f1b24;">
-    <div style="max-width:520px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #dbe7ef;">
-      <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5d7c8f;">${FROM_NAME}</p>
-      <h1 style="margin:0 0 24px;font-size:22px;line-height:1.3;">${escapeHtml(headline)}</h1>
-      <ul style="margin:0;padding:0;">${rows}</ul>
-      <p style="margin:24px 0 0;font-size:12px;line-height:1.6;color:#7d97a7;">
-        Picked for what you told us you cook.
-        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#7d97a7;">Unsubscribe</a>
-      </p>
-    </div>
-  </body>
-</html>`;
+  const html = emailCard({
+    title: headline,
+    maxWidthPx: 520,
+    unsubscribeUrl: optOutUrl,
+    body: `<ul style="margin:0;padding:0;">${rows}</ul>`,
+    footer: "Picked for what you told us you cook.",
+  });
 
   return { text, html };
 }
@@ -116,11 +113,8 @@ export const send = internalAction({
     // that counts.
     if (inputs === null || !inputs.subscribed) return null;
 
-    const siteUrl = requireEnv("CONVEX_SITE_URL").replace(/\/$/, "");
-    const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${encodeURIComponent(
-      inputs.unsubscribeToken,
-    )}`;
-    const { text, html } = buildEmail(args.picks, unsubscribeUrl);
+    const optOutUrl = unsubscribeUrl(inputs.unsubscribeToken);
+    const { text, html } = buildEmail(args.picks, optOutUrl);
 
     await ctx.runAction(internal.agentmail.sendMessage, {
       inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
@@ -131,10 +125,7 @@ export const send = internalAction({
           : `${args.picks.length} deals worth your time`,
       text,
       html,
-      headers: {
-        "List-Unsubscribe": `<${unsubscribeUrl}>`,
-        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-      },
+      headers: unsubscribeHeaders(optOutUrl),
     });
 
     await ctx.runMutation(internal.deals.data.markDigestSent, {

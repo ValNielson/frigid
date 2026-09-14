@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-14T17:17:20Z
+- **Last updated:** 2026-09-14T21:10:52Z
 
 ## Log
 
@@ -321,7 +321,7 @@ whatever the planner suggested. Re-running the same profile scrapes
 Settled the plus-addressing question the per-user signup branch has waited on
 since this feature started, now that the AgentMail key carries `inbox_read`.
 
-Mail sent from an external address to `frigid+plustest02@agentmail.to` arrived
+Mail sent from an external address to a plus-tagged form of the project inbox arrived
 in the base inbox with the tag intact in `message.to`. So one inbox can serve
 many people: each gets their own tagged address to hand to merchants, and
 inbound mail is attributable without creating an inbox per user. An earlier
@@ -349,3 +349,290 @@ with them is equally dead. Both are fixed by the same step.
 Order of work: deploy to a cloud deployment, set `CONVEX_SITE_URL` to the public
 site URL, register the webhook, then build inbound extraction against real
 messages. Inbound extraction stays unwritten until then.
+
+### 2026-09-14 - 55ab193
+Found and fixed the reason this project had burned 35% of its monthly Firecrawl
+allowance. `run.ts` wrote `lastScrapedAt` after every scrape and never read it —
+`merchantsNeedingScrape` existed, had unit tests, and had no caller — so the
+24-hour TTL never once prevented a call and every run re-scraped every merchant
+at full price.
+
+The price was higher than assumed. Measured against the live account rather than
+estimated: one coupon search at limit 2 costs 12 credits, not the 2 a plain
+search would be, because the `json` format runs server-side extraction on every
+result. A five-merchant run is therefore about 60 credits out of 1,000 a month.
+
+Fixed by creating the merchant row before the search instead of after, so its
+freshness can be consulted while there is still a call to save. A repeat run now
+costs 7 credits instead of ~60, skips fresh merchants, and still matches the same
+coupons from the stored pool. Added a `creditBalance` action so the account's
+real number is readable, recorded the measured cost as a constant, and counted
+`merchantsFresh` on the run so the saving is visible rather than assumed
+(`convex/deals/run.ts`, `convex/deals/policy.ts`, `convex/firecrawl.ts`).
+
+### 2026-09-14 - c8eec47
+Brought the recipe search and coupon discovery branches together. They were built
+in parallel with no knowledge of each other and do not collide on table names —
+all 15 tables coexist — but they collided on direction, and that part git could
+not see.
+
+The recipe branch had closed the public API surface on the three SDK wrappers.
+The deals branch, written against the older public versions, had added eight more
+public actions, including one that sends mail. Only `schema.ts` and this log
+conflicted; `agentmail.ts`, `openai.ts`, and `firecrawl.ts` all auto-merged into
+code that compiled and would have failed at runtime, because the digest still
+called a public `sendMessage` that no longer existed. Every SDK wrapper is now
+internal and every coupon call site reads through the internal API, so the
+lockdown covers the newer surface too.
+
+Merged rather than rebased: eleven commits each touching `schema.ts` would have
+meant resolving one conflict eleven times with a chance to get it wrong on each
+pass. Verified after the merge — typecheck, lint, 44 tests, a clean production
+build, and a coupon run that still completes and still withholds an allergen.
+
+### 2026-09-14 - 007c84b
+Put both pipelines on one Firecrawl credit ledger. The daily budget had been
+enforced by summing recipe job rows, so coupon discovery was invisible to it —
+the global brake stopped being global the moment a second pipeline existed, and
+both draw on the same monthly allowance.
+
+One `creditLedger` table now takes writes from both and the recipe budget guard
+reads the shared total. Recipe spend is mirrored inside `markStatus` rather than
+at its three call sites, so a fourth place that spends a credit cannot forget to
+declare it. Verified against the live account: a run that actually paid spent 16
+credits and the ledger recorded 16 (`convex/credits.ts`, `convex/recipeJobs.ts`,
+`convex/deals/run.ts`).
+
+### 2026-09-14 - working tree
+Reviewed the merged branch and fixed what the review turned up. The serious one
+was an authentication bypass: `consumeCode` reported `verified` whenever no code
+was armed and the address had been verified before, and verifying is what mints
+a session — so anyone who knew a registered address could sign in with any code
+at all. The branch was written when "verified" was a subscription flag that
+returned no credential, and adding sessions on top never revisited it. It now
+returns `invalid`, which is also what an unknown address gets, so the property
+that this cannot be used to enumerate the list survives
+(`convex/users.ts`, `convex/policy.ts`).
+
+The shared credit ledger now has an actual brake behind it. `withinBudget` was
+written last commit and never called, and the coupon pipeline — the heavier of
+the two, at about 60 credits a run — never read it, so the cron could spend past
+the daily budget without limit. It is checked before a run starts and again
+inside the merchant loop. Both public entry points now share one guard;
+`findForIngredients` previously enforced nothing at all. The run row is also
+created by the mutation rather than the scheduled action, because a cooldown
+that reads a row the action has not written yet is not a cooldown
+(`convex/deals.ts`, `convex/deals/run.ts`, `convex/crons.ts`).
+
+Two allergen tables had been maintained separately and disagreed in eleven of
+twelve categories, while both files described allergens as a hard rule. Recipes
+did not know teriyaki is soy, dijon is mustard, or hummus is sesame; coupons did
+not know soy sauce is wheat. Merged to their union in `convex/allergens.ts`,
+which is the only merge consistent with what both files already said they were
+for.
+
+Smaller corrections from the same pass: the coupon pool was reading the oldest
+500 rows because Convex orders ascending by default, so everything scraped past
+that cap was paid for and never matched; digest cadence is now stamped when a
+run starts, since a run that matched nothing sent no mail and left the user due
+again every day regardless of the cadence they chose; the free-text location is
+flattened and the model's answer validated before it becomes a shared cache key;
+sessions expire in seven days instead of thirty and a cron prunes them; the
+webhook rejects an unfileable payload with a 400 instead of a 500 that Svix
+would redeliver forever.
+
+Cleanup the review asked for: the second Firecrawl client is gone, merged into
+`firecrawlClient.ts` so every paid call records its own credit — that split was
+what made the budget hole possible. Five copies of `escapeHtml` and four of the
+unsubscribe URL collapsed into `convex/emailShell.ts`; the copies had already
+drifted, with only one of the five escaping a single quote.
+
+Tests went from 44 to 131 and moved to vitest, with `convex-test` driving real
+Convex functions against an in-memory database. Each security fix has a
+regression test that was checked by reverting the fix and watching it fail.
+Typecheck, lint, and a production build are clean.
+
+Then connected the two halves of the product, which had shipped disconnected.
+`deals.findForIngredients` had no callers at all despite its own comment calling
+it "the seam for the recipe-search work", and the recipe pipeline never mentioned
+coupons — so a finished recipe search returned a shopping list and no deals.
+
+`attachDeals` is now a fifth pipeline step. A warm coupon pool is a database read
+and a substring match, so it runs inline and the email goes out carrying deals. A
+city nobody has scraped yet is a real coupon run, so that is scheduled rather
+than awaited and the run writes the deals back and releases the email itself —
+awaiting it inside the step would have frozen the job's `updatedAt` past the
+stall threshold and made a working job report itself as dead. The step is
+deliberately not wrapped in the pipeline's `guard()` helper: that marks a job
+failed on any throw, and deals are a bonus while the recipes are what was asked
+for, so every failure path still sends the email
+(`convex/recipeRun.ts`, `convex/recipeJobs.ts`, `convex/deals/run.ts`).
+
+Fixed a bug found by reading the arguments of a live Firecrawl call: `run.ts`
+picked `planQueries[0]` once outside the merchant loop, so every merchant was
+searched with the same generic city query and the planner's merchant-specific
+queries were never read. A wine shop was being asked for "grocery weekly ads"
+and returning nothing while still costing a call. Each merchant now gets a query
+built from its own name and place, and chain rows named after their domain drop
+the TLD so the search is for "meijer" rather than "meijer.com".
+
+Also consolidated two guards that had drifted. `blockedFromRunning` lived inside
+one mutation file and could not be read from an action, so the new deals step
+would have walked around the cooldown and budget the same way
+`findForIngredients` once did; it is now a single internal query all three entry
+points read. `credits.ts` had the ledger sum written twice, which is also what
+had made a one-read guard awkward; both queries now share one function.
+
+Tests are at 143. The seam is covered end to end in `convex-test` — warm match,
+cold hand-off, allergen exclusion, budget refusal, and the rule that a deals
+failure still leaves the recipes intact.
+
+Then ran it for real, as a Cleveland cook asking for buffalo chicken dip. Four
+recipes came back parsed from JSON-LD, a nineteen-item shopping list combined
+across them, and an email arrived. It also exposed three things no unit test was
+going to find.
+
+The one deal it attached was a Grand Rapids coupon shown to a Cleveland shopper.
+`merchants` is keyed on domain alone and the metro check was deliberately skipped
+for chains on the reasoning that "the domain is already the guarantee" — which is
+not true of a regional weekly ad. Worse, the leak hid itself: the deals step
+decides whether to scrape by asking whether the pool is empty, and the pool
+looked full, so Cleveland was never scraped at all and `kroger.com` was never
+created. Coupons now carry a `metroKey`, the dedupe key includes it so one
+chain's ads in two cities stop overwriting each other, and scrape freshness moved
+to a `merchantScrapes` row per merchant *and* metro — on the merchant row it was
+global, so reading Kroger in one city marked it fresh in every other.
+
+The deal was also a bad match: the shopping list said "cheddar" and it returned
+Goldfish Cheddar Crackers, because matching swept the whole title and the word is
+genuinely in there. The extraction now also returns `primaryItem` — the single
+food an offer is actually for, "cracker" rather than "cheddar" — and matching
+reads that. It rides the extraction call already being paid for.
+
+And the pool was full of things nobody eats: BBQ tools, a crockpot, fifty pounds
+of dog food. The filter kept any row whose `isFood` was not explicitly false
+while the extraction prompt told the model to leave fields out when unsure, so an
+omission read as "keep". The two halves now agree, and a deterministic non-food
+term list backs up the model's answer — the same reason the allergen rule has
+never been delegated to one.
+
+The re-run proved each of those: no Michigan coupons, Kroger scraped for
+Cleveland, no non-food stored, and four deals that belong on the list — chicken
+breast, cheese slices, two sauces — all Cleveland, for zero credits, because by
+then the pool was warm and matching is a database read.
+
+It found one more bug on the way. The cold run died on a Firecrawl rate limit
+after four merchants: fixing per-metro freshness meant merchants that used to be
+skipped as fresh now genuinely scrape, and the loop burst past the free tier's
+ten requests a minute. The recipe pipeline already paces its scrapes for exactly
+this reason; the coupon loop paced nothing. It does now, and one merchant failing
+costs only that merchant rather than aborting a run and discarding twenty coupons
+already read. The safety net from earlier held while this was broken — the run
+died, the job still released its email, and the recipes still arrived.
+
+Fixed the prices next. Weekly-ad pages render cents as superscript and
+extraction flattens "$1.49" to "$149", so a live run stored barbecue sauce at
+$149 and chicken at $399. No food costs over a hundred dollars, so a bare dollar
+amount that large is a missing decimal; it is repaired where the extracted
+fields are already normalized, and a figure still absurd afterwards is dropped
+rather than printed. That is the rule the recipe email already stated about
+never quoting a price it cannot stand behind, finally applied to the deals
+section too.
+
+Then replaced the rate-limit fix from earlier in the session, which was wrong.
+Spacing one loop cannot govern a limit two pipelines share: the recipe pipeline
+spends its requests and then immediately triggers a coupon run, inside the same
+minute, which is exactly how the first Cleveland cold run died. Requests now go
+through one shared limiter — a table both features write to, in the same spirit
+as the credit ledger, and for the same reason. Reserving and counting happen in
+a single mutation, because reading a count, sleeping, and then recording lets
+two callers both see room and both fire; Convex's optimistic concurrency makes
+two reservations that read the same window conflict, and the loser retries
+against the updated count. Firecrawl's own retry-after is honoured as a backstop
+for when the per-call weights are wrong, which is cheap because a rejected
+request is never billed. Both hand-tuned spacing constants are gone; they were
+stand-ins for this.
+
+The San Diego run that was meant to prove all of it did not. The recipe half
+worked — two Mediterranean recipes, a twenty-four item list, and the planner
+finding real San Diego stores — and the coupon run completed cleanly instead of
+crashing, which is the improvement the limiter was for. But it scraped nothing:
+nine store-name lookups ran first and consumed the whole per-minute budget, so
+every merchant search afterwards found the queue too deep and was skipped. The
+limiter turned a crash into an orderly total skip, which is better and still not
+useful. The cause is cheap discovery work starving the expensive work that
+actually produces coupons, and the fix is to bound the lookups and give each
+merchant its own scheduled step rather than one long action holding them all.
+
+So two things remained unproven rather than proven at that point: per-metro
+rescraping in a second city, and price repair against live extracted data.
+
+Fixing that meant changing the shape of a run. It had been one action holding
+everything — plan, then every merchant, then match — which could not survive the
+limiter: discovery spends the per-minute budget first, and each merchant
+afterwards was either asleep inside an action with a finite budget or refused
+outright. A run is now a chain of scheduled steps, one merchant per step, so each
+step is short, the rolling window drains between them, and a merchant the limiter
+turns away is rescheduled with a backoff rather than abandoned. Two smaller
+causes went with it: a city plan was resolving an unbounded number of store names
+and spending the whole budget on discovery before any merchant was read, and it
+was doing that partly on sites that are not shops — a newspaper had been stored
+as a grocery merchant. Category and tag pages now count as roundups too, after a
+recipe search paid to scrape a category index twice and found no ingredients in
+it either time.
+
+A clean-slate San Diego run then proved what the previous one could not. The same
+city that had skipped all nine of its stores scraped five and skipped two, with
+no error. Kroger, still fresh for Cleveland, was correctly scraped again for San
+Diego and recorded under its own metro — which is the per-metro freshness rule
+working rather than being asserted. Every price in the forty coupons it stored is
+decimal-correct, against the flattened ones this started with. Discovery cost six
+site lookups where the previous attempt spent twenty-two.
+
+It attached no deals, and that is the honest result rather than a failure. The
+overlap between what the recipes needed — olive oil, tahini, kalamata, hummus —
+and what San Diego is discounting this week — bacon, franks, gnocchi, lasagna,
+cake — is a single bad match, which the selection step correctly refused. The
+matching worked; there was nothing to find.
+
+It surfaced two more problems. The second of them is now fixed: a job sat in the
+deals step past the stalled threshold, because the chain is deliberately slow and
+nothing touched the job's timestamp while it ran, so the screen would have told
+someone a working run had stopped responding — which it did, for half an hour,
+during the San Diego run. Every stretch that used to go quiet now reports where
+it is: planning before it starts, each merchant as it is reached, a merchant
+waiting on the limiter, and the final matching call. The status text is the point
+as much as the timestamp, so "Checking kroger.com (2 of 5)" replaces a static
+line that never changed. The heartbeat writes only the detail, never the status,
+so it cannot knock a job out of the step it is in, and a run with no waiting job
+— a cron or a prompt — writes nothing at all.
+
+The dog treat is fixed too, by changing the question rather than lengthening the
+answer. "Is this food?" had been a boolean plus a denylist of sixty-nine product
+names, which is the wrong shape twice over: not-food is unbounded, so the list
+could only ever grow after something unwanted had reached a user, and a boolean
+is the weakest classification a model can be asked for, because false has to be
+actively chosen against a default of omission — which is how an omitted flag came
+to mean "keep".
+
+Extraction now returns a department instead, from a fixed list with real
+non-grocery homes in it, so a crockpot has somewhere correct to go rather than
+being forced into a food aisle. Three signals decide, in order: a category word
+settles it, which is what a backstop is for; then a known department; and
+anything the extractor genuinely could not place has to be recognised by the
+food vocabulary. The hand-written list is down from sixty-nine product names to
+twenty-one category words — a dog treat and a dog bed are both "dog".
+
+The vocabulary itself is derived rather than written, composed from the
+department keywords and allergen terms this project already maintains for the
+shopping list and the safety filter, so adding a department keyword widens it for
+free. That floor is genuinely insufficient and there is a test saying so:
+gnocchi, samosa, watermelon and flan are all absent from it, and all four are
+real food from a live coupon pool. So it learns. Every recipe the product parses
+contributes its ingredients, recorded where every recipe already passes through,
+bounded at forty new words per recipe and three thousand on read. Reading one
+gnocchi recipe teaches gnocchi and halloumi, and the coupon filter recognises
+them from then on.
+
+Not yet confirmed against the live extractor: no run has produced a department
+field, only the boolean it replaces. Tests are at 181.

@@ -12,10 +12,19 @@ const STEPS = [
   { status: "searching", label: "Searching" },
   { status: "reading", label: "Reading recipes" },
   { status: "shopping", label: "Building your list" },
+  { status: "dealing", label: "Checking for deals" },
   { status: "emailing", label: "Sending your email" },
 ] as const;
 
-const ORDER = ["queued", "searching", "reading", "shopping", "emailing", "done"];
+const ORDER = [
+  "queued",
+  "searching",
+  "reading",
+  "shopping",
+  "dealing",
+  "emailing",
+  "done",
+];
 
 export function RecipeSearchCard() {
   const session = useSessionToken();
@@ -246,6 +255,34 @@ function JobPanel({ job }: { job: Job }) {
               </div>
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {job.deals.length > 0 ? (
+        <div className="mt-6">
+          <h3 className="text-xs uppercase tracking-[0.16em] text-frost">
+            On sale for this list
+          </h3>
+          <ul className="mt-2 space-y-2">
+            {job.deals.map((deal) => (
+              <li key={`${deal.title}-${deal.merchantName ?? ""}`} className="text-sm">
+                <span>{deal.title}</span>
+                {deal.discount !== undefined ? (
+                  <span className="ml-2 rounded-full bg-frost-soft px-2 py-0.5 text-xs font-medium">
+                    {deal.discount}
+                  </span>
+                ) : null}
+                {deal.merchantName !== undefined ? (
+                  <span className="text-xs text-muted"> at {deal.merchantName}</span>
+                ) : null}
+                {deal.code !== undefined ? (
+                  <span className="block font-mono text-xs text-muted">
+                    Code {deal.code}
+                  </span>
+                ) : null}
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 

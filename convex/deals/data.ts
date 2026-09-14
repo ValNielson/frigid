@@ -1,12 +1,13 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
 import { NO_ALLERGIES } from "../onboardingQuestions";
+import { creditsSpentToday, hasBudgetLeft } from "../credits";
+import { MANUAL_RUN_COOLDOWN_MS } from "./policy";
 import {
   MAILABLE_FREQUENCIES,
   MAX_COUPON_POOL,
   isPlanFresh,
   storePlanKey,
-  MAX_MERCHANTS_READ,
   couponDedupeKey,
   isDigestDue,
   isScrapeFresh,
@@ -28,6 +29,7 @@ const couponInput = v.object({
   details: v.optional(v.string()),
   code: v.optional(v.string()),
   discount: v.optional(v.string()),
+  primaryItem: v.optional(v.string()),
   itemTerms: v.array(v.string()),
   tags: v.array(v.string()),
   expiresAt: v.optional(v.number()),
@@ -43,6 +45,7 @@ const couponOutput = v.object({
   details: v.optional(v.string()),
   code: v.optional(v.string()),
   discount: v.optional(v.string()),
+  primaryItem: v.optional(v.string()),
   itemTerms: v.array(v.string()),
   tags: v.array(v.string()),
   expiresAt: v.optional(v.number()),
@@ -138,35 +141,80 @@ export const merchantsByDomains = internalQuery({
   },
 });
 
-/** Every merchant domain we know, for the inbound-mail prefilter. */
-export const allMerchantDomains = internalQuery({
-  args: {},
-  returns: v.array(v.string()),
-  handler: async (ctx) => {
-    const rows = await ctx.db.query("merchants").take(MAX_MERCHANTS_READ);
-    return rows.map((row) => row.domain);
-  },
-});
-
-/** Which of these merchants are stale enough to be worth fetching again. */
+/**
+ * Which of these merchants are stale enough to be worth fetching again.
+ *
+ * Returns the name alongside the id because the caller needs it to build that
+ * merchant's search query, and it is already holding the row.
+ */
 export const merchantsNeedingScrape = internalQuery({
-  args: { merchantIds: v.array(v.id("merchants")), now: v.number() },
-  returns: v.array(v.id("merchants")),
+  args: {
+    merchantIds: v.array(v.id("merchants")),
+    metroKey: v.string(),
+    now: v.number(),
+  },
+  returns: v.array(v.object({ _id: v.id("merchants"), name: v.string() })),
   handler: async (ctx, args) => {
     const stale = [];
     for (const id of args.merchantIds) {
       const row = await ctx.db.get(id);
       if (row === null) continue;
-      if (!isScrapeFresh(row.lastScrapedAt, args.now)) stale.push(id);
+      // Per metro, not per domain. Kroger being fresh for Grand Rapids says
+      // nothing about whether we have ever read its Cleveland ad.
+      const scrape = await ctx.db
+        .query("merchantScrapes")
+        .withIndex("by_merchant_metro", (q) =>
+          q.eq("merchantId", id).eq("metroKey", args.metroKey),
+        )
+        .unique();
+      if (!isScrapeFresh(scrape?.lastScrapedAt, args.now)) {
+        stale.push({ _id: row._id, name: row.name });
+      }
     }
     return stale;
   },
 });
 
+/** Store names for a set of coupons, so a deal can say where to buy it. */
+export const merchantNamesByIds = internalQuery({
+  args: { merchantIds: v.array(v.id("merchants")) },
+  returns: v.array(v.object({ _id: v.id("merchants"), name: v.string() })),
+  handler: async (ctx, args) => {
+    const found = [];
+    for (const id of [...new Set(args.merchantIds)]) {
+      const row = await ctx.db.get(id);
+      if (row !== null) found.push({ _id: row._id, name: row.name });
+    }
+    return found;
+  },
+});
+
 export const markScraped = internalMutation({
-  args: { merchantId: v.id("merchants"), now: v.number() },
+  args: {
+    merchantId: v.id("merchants"),
+    metroKey: v.string(),
+    now: v.number(),
+  },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const existing = await ctx.db
+      .query("merchantScrapes")
+      .withIndex("by_merchant_metro", (q) =>
+        q.eq("merchantId", args.merchantId).eq("metroKey", args.metroKey),
+      )
+      .unique();
+
+    if (existing === null) {
+      await ctx.db.insert("merchantScrapes", {
+        merchantId: args.merchantId,
+        metroKey: args.metroKey,
+        lastScrapedAt: args.now,
+      });
+    } else {
+      await ctx.db.patch(existing._id, { lastScrapedAt: args.now });
+    }
+
+    // Still written so the merchant row shows when it was last read at all.
     await ctx.db.patch(args.merchantId, { lastScrapedAt: args.now });
     return null;
   },
@@ -182,6 +230,7 @@ export const upsertCoupons = internalMutation({
   args: {
     merchantId: v.id("merchants"),
     domain: v.string(),
+    metroKey: v.string(),
     userId: v.union(v.id("users"), v.null()),
     coupons: v.array(couponInput),
     now: v.number(),
@@ -192,7 +241,12 @@ export const upsertCoupons = internalMutation({
     let updated = 0;
 
     for (const coupon of args.coupons) {
-      const dedupeKey = couponDedupeKey(args.domain, coupon.title, coupon.code);
+      const dedupeKey = couponDedupeKey(
+        args.metroKey,
+        args.domain,
+        coupon.title,
+        coupon.code,
+      );
       const existing = await ctx.db
         .query("coupons")
         .withIndex("by_dedupe_key", (q) => q.eq("dedupeKey", dedupeKey))
@@ -202,6 +256,7 @@ export const upsertCoupons = internalMutation({
         userId: args.userId,
         merchantId: args.merchantId,
         ...coupon,
+        metroKey: args.metroKey,
         itemTerms: coupon.itemTerms.map((term) => term.toLowerCase()),
         dedupeKey,
         foundAt: args.now,
@@ -229,6 +284,7 @@ export const couponsForUser = internalQuery({
   args: {
     userId: v.id("users"),
     merchantIds: v.array(v.id("merchants")),
+    metroKey: v.string(),
     now: v.number(),
   },
   returns: v.array(couponOutput),
@@ -237,14 +293,19 @@ export const couponsForUser = internalQuery({
     const seen = new Set<string>();
     const results = [];
 
+    // Newest first, explicitly. Convex defaults to ascending, so without this
+    // the pool froze on the oldest MAX_COUPON_POOL rows and every coupon
+    // scraped after that point was paid for and never read.
     const pools = [
       await ctx.db
         .query("coupons")
         .withIndex("by_user", (q) => q.eq("userId", null))
+        .order("desc")
         .take(MAX_COUPON_POOL),
       await ctx.db
         .query("coupons")
         .withIndex("by_user", (q) => q.eq("userId", args.userId))
+        .order("desc")
         .take(MAX_COUPON_POOL),
     ];
 
@@ -253,9 +314,15 @@ export const couponsForUser = internalQuery({
         if (seen.has(row.dedupeKey)) continue;
         if (row.expiresAt !== undefined && row.expiresAt < args.now) continue;
         // Mail-sourced coupons are kept even from a merchant the user did not
-        // list: they only arrive because they signed up for that list.
-        if (row.sourceKind === "scrape" && !wanted.has(row.merchantId))
-          continue;
+        // list, and regardless of metro: they only arrive because this person
+        // signed up for that list, so they are already theirs.
+        if (row.sourceKind === "scrape") {
+          if (!wanted.has(row.merchantId)) continue;
+          // A chain's weekly ad is regional. Without this a Grand Rapids price
+          // was shown to a Cleveland shopper — and, worse, made their pool look
+          // warm so their own city was never scraped.
+          if (row.metroKey !== args.metroKey) continue;
+        }
         seen.add(row.dedupeKey);
         results.push({
           _id: row._id,
@@ -264,6 +331,7 @@ export const couponsForUser = internalQuery({
           details: row.details,
           code: row.code,
           discount: row.discount,
+          primaryItem: row.primaryItem,
           itemTerms: row.itemTerms,
           tags: row.tags,
           expiresAt: row.expiresAt,
@@ -380,6 +448,52 @@ export const savePlan = internalMutation({
   },
 });
 
+/**
+ * Whether this person may start a run right now, and why not.
+ *
+ * One query rather than a helper per caller: the two public mutations and the
+ * recipe pipeline's deals step all have to agree, and they previously did not —
+ * requestRun enforced the cooldown, findForIngredients enforced nothing. A
+ * query rather than a plain function so an action can read it too, which is
+ * what the recipe step needs.
+ */
+export const runBlocked = internalQuery({
+  args: { userId: v.id("users"), now: v.number() },
+  returns: v.union(
+    v.object({
+      error: v.string(),
+      cooldownSeconds: v.optional(v.number()),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const recent = await ctx.db
+      .query("runs")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .order("desc")
+      .first();
+
+    // Throttled on the server, not the button: a run costs real Firecrawl and
+    // model spend, and a disabled button is a suggestion.
+    if (recent !== null && args.now - recent.startedAt < MANUAL_RUN_COOLDOWN_MS) {
+      const remaining = MANUAL_RUN_COOLDOWN_MS - (args.now - recent.startedAt);
+      return {
+        error: "We are still working on your last request.",
+        cooldownSeconds: Math.ceil(remaining / 1000),
+      };
+    }
+
+    // The same shared ledger recipeJobs.start reads. Coupon discovery is the
+    // heavier of the two pipelines, so leaving it unmetered made the brake
+    // decorative.
+    if (!hasBudgetLeft(await creditsSpentToday(ctx, args.now))) {
+      return { error: "We've hit today's search budget. Try again tomorrow." };
+    }
+
+    return null;
+  },
+});
+
 export const startRun = internalMutation({
   args: {
     userId: v.id("users"),
@@ -389,6 +503,14 @@ export const startRun = internalMutation({
   },
   returns: v.id("runs"),
   handler: async (ctx, args) => {
+    // Stamped at the start, not on a successful send. A cron run that matched
+    // nothing sends no mail, and keying the cadence on sends alone left those
+    // users permanently due — re-run every day whatever cadence they chose.
+    // Stamping here also means a run that crashes cannot retry forever.
+    if (args.trigger === "cron") {
+      await ctx.db.patch(args.userId, { lastDigestAttemptAt: args.now });
+    }
+
     return await ctx.db.insert("runs", {
       userId: args.userId,
       kind: args.kind,
@@ -463,7 +585,19 @@ export const usersDueForDigest = internalQuery({
       for (const row of rows) {
         if (!row.subscribed) continue;
         if (row.onboardedAt === undefined) continue;
-        if (!isDigestDue(row.emailFrequency, row.lastDigestAt, args.now)) {
+        // The later of "we sent" and "we tried". isDigestDue stays a pure
+        // function of one timestamp; picking which one is this caller's job.
+        const lastTouched = Math.max(
+          row.lastDigestAt ?? 0,
+          row.lastDigestAttemptAt ?? 0,
+        );
+        if (
+          !isDigestDue(
+            row.emailFrequency,
+            lastTouched === 0 ? undefined : lastTouched,
+            args.now,
+          )
+        ) {
           continue;
         }
         due.push(row._id);

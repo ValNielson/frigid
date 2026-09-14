@@ -11,6 +11,8 @@
  * starts feeling untrustworthy.
  */
 
+import { emailCard, escapeHtml, safeHref } from "./emailShell";
+
 export type EmailRecipe = {
   url: string;
   name: string;
@@ -35,20 +37,22 @@ export type EmailShoppingItem = {
   stores: EmailStore[];
 };
 
+export type EmailDeal = {
+  title: string;
+  discount?: string;
+  details?: string;
+  code?: string;
+  sourceUrl?: string;
+  merchantName?: string;
+};
+
 export type RecipeEmailPayload = {
   prompt: string;
   recipes: EmailRecipe[];
   shopping: EmailShoppingItem[];
+  /** Coupons covering this list. Absent on jobs from before the deals step. */
+  deals?: EmailDeal[];
 };
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
-}
 
 /** "chicken thighs" reads better as "Chicken thighs" at the start of a line. */
 function sentenceCase(value: string): string {
@@ -129,6 +133,20 @@ export function renderRecipeText(payload: RecipeEmailPayload): string {
     }
   }
 
+  const deals = payload.deals ?? [];
+  if (deals.length > 0) {
+    lines.push("ON SALE FOR THIS LIST", "");
+    for (const deal of deals) {
+      const price = deal.discount === undefined ? "" : ` - ${deal.discount}`;
+      const where = deal.merchantName === undefined ? "" : ` at ${deal.merchantName}`;
+      lines.push(`  ${deal.title}${price}${where}`);
+      if (deal.code !== undefined) lines.push(`      Code: ${deal.code}`);
+      const href = safeHref(deal.sourceUrl);
+      if (href !== null) lines.push(`      ${href}`);
+    }
+    lines.push("");
+  }
+
   return lines.join("\n").trimEnd();
 }
 
@@ -190,25 +208,54 @@ export function renderRecipeHtml(
       </p>
       ${shoppingGroups}`;
 
-  return `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f4f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f1b24;">
-    <div style="max-width:560px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #dbe7ef;">
-      <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5d7c8f;">frigid</p>
-      <h1 style="margin:0 0 6px;font-size:22px;">Here is what we found</h1>
+  const deals = payload.deals ?? [];
+  const dealsSection =
+    deals.length === 0
+      ? ""
+      : `
+      <h2 style="margin:32px 0 4px;font-size:18px;">On sale for this list</h2>
+      <p style="margin:0 0 8px;font-size:13px;color:#5d7c8f;">
+        Matched against what you need to buy, at the stores you shop.
+      </p>
+      <ul style="margin:0;padding:0;">${deals
+        .map((deal) => {
+          const price =
+            deal.discount === undefined
+              ? ""
+              : `<span style="margin-left:8px;padding:2px 8px;border-radius:999px;background:#eaf5ec;color:#2f6b43;font-size:13px;font-weight:600;">${escapeHtml(deal.discount)}</span>`;
+          const where =
+            deal.merchantName === undefined
+              ? ""
+              : `<span style="color:#5d7c8f;font-size:12px;"> at ${escapeHtml(deal.merchantName)}</span>`;
+          const code =
+            deal.code === undefined
+              ? ""
+              : `<div style="font-size:12px;color:#3d5666;margin-top:2px;">Code <strong style="font-family:ui-monospace,SFMono-Regular,Menlo,monospace;">${escapeHtml(deal.code)}</strong></div>`;
+          // Source URLs come from Firecrawl results, so the scheme is not ours
+          // to assume. An unlinked title beats a link we did not vet.
+          const href = safeHref(deal.sourceUrl);
+          const title =
+            href === null
+              ? escapeHtml(deal.title)
+              : `<a href="${escapeHtml(href)}" style="color:#0f1b24;">${escapeHtml(deal.title)}</a>`;
+          return `<li style="margin:0 0 10px;padding:0 0 10px;border-bottom:1px solid #eef4f8;list-style:none;">
+            <div style="font-size:14px;">${title}${price}${where}</div>${code}
+          </li>`;
+        })
+        .join("")}</ul>`;
+
+  return emailCard({
+    title: "Here is what we found",
+    unsubscribeUrl,
+    footer:
+      "Store links go to that store's own search, so they work wherever you shop. " +
+      "We do not quote prices we have not checked.",
+    body: `
       <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#3d5666;">
         You asked for ${escapeHtml(payload.prompt)}.
       </p>
       ${recipeCards}
       ${shoppingSection}
-      <p style="margin:28px 0 0;font-size:12px;line-height:1.6;color:#7d97a7;">
-        Store links go to that store's own search, so they work wherever you shop.
-        We do not quote prices we have not checked.
-      </p>
-      <p style="margin:16px 0 0;font-size:12px;color:#7d97a7;">
-        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#7d97a7;">Unsubscribe from frigid emails</a>
-      </p>
-    </div>
-  </body>
-</html>`;
+      ${dealsSection}`,
+  });
 }

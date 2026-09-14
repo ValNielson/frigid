@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import { internalMutation } from "./_generated/server";
 import { SCHEMA_VERSION } from "./onboardingQuestions";
+import { SESSION_TTL_MS } from "./hash";
 
 /**
  * Seed helpers for exercising the pipeline against the dev deployment.
@@ -89,6 +90,35 @@ export const seedUser = internalMutation({
   },
 });
 
+/**
+ * Mints a session for a seeded user, so an end-to-end check can drive the real
+ * public API instead of reaching past it into internal functions.
+ *
+ * Takes the hash rather than computing it: this file runs in the deterministic
+ * runtime, and the same rule that keeps verification.ts in "use node" applies —
+ * secrets are hashed by the caller and arrive here already opaque.
+ */
+export const seedSession = internalMutation({
+  args: { email: v.string(), tokenHash: v.string() },
+  returns: v.union(v.id("sessions"), v.null()),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+    if (user === null) return null;
+
+    const now = Date.now();
+    return await ctx.db.insert("sessions", {
+      userId: user._id,
+      tokenHash: args.tokenHash,
+      expiresAt: now + SESSION_TTL_MS,
+      createdAt: now,
+      lastSeenAt: now,
+    });
+  },
+});
+
 /** Clears cached plans so a planner change can be observed rather than assumed. */
 export const clearPlans = internalMutation({
   args: {},
@@ -149,5 +179,62 @@ export const inspect = internalMutation({
               error: run.error,
             },
     };
+  },
+});
+
+/**
+ * Deletes every coupon. Local only — this is how a metro-scoping change gets a
+ * clean pool to be judged against, since the pre-existing rows carry dedupe
+ * keys from before the metro was part of them.
+ */
+export const clearCoupons = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("coupons").take(1000);
+    for (const row of rows) await ctx.db.delete(row._id);
+    return rows.length;
+  },
+});
+
+/**
+ * Clears this user's recipe jobs so the daily cap does not block a retry during
+ * testing. Local only — the cap itself stays enforced in code rather than being
+ * raised for convenience.
+ */
+export const clearJobs = internalMutation({
+  args: { email: v.string() },
+  returns: v.number(),
+  handler: async (ctx, args) => {
+    const user = await ctx.db
+      .query("users")
+      .withIndex("by_email", (q) => q.eq("email", args.email))
+      .unique();
+    if (user === null) return 0;
+
+    const jobs = await ctx.db
+      .query("recipeJobs")
+      .withIndex("by_user", (q) => q.eq("userId", user._id))
+      .take(200);
+    for (const job of jobs) await ctx.db.delete(job._id);
+    return jobs.length;
+  },
+});
+
+/**
+ * Clears the shared credit ledger. Local only.
+ *
+ * The daily budget is deliberately hard to get around — that is the point of it
+ * — so a day of testing eventually blocks its own next run. Resetting the
+ * ledger is honest for a dev deployment and dishonest anywhere else: the credits
+ * were really spent, and only the account balance knows it.
+ */
+export const clearLedger = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const rows = await ctx.db.query("creditLedger").take(1000);
+    for (const row of rows) await ctx.db.delete(row._id);
+    return rows.length;
   },
 });

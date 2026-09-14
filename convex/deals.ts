@@ -2,7 +2,6 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { userForToken } from "./sessions";
-import { MANUAL_RUN_COOLDOWN_MS } from "./deals/policy";
 
 /**
  * The public surface for coupon discovery.
@@ -12,6 +11,18 @@ import { MANUAL_RUN_COOLDOWN_MS } from "./deals/policy";
  * outlives a single action's request window, which is why the console tells
  * people their results arrive by email.
  */
+
+/**
+ * Convex derives a function's client-facing type from its handler, and a
+ * handler whose branches return different key sets infers as a union the client
+ * cannot read a field off. Naming the shape once is the same fix verification.ts
+ * uses for requestCode and verifyCode.
+ */
+type RunRequestResult = {
+  ok: boolean;
+  error?: string;
+  cooldownSeconds?: number;
+};
 
 /**
  * Starts a run for the signed-in user.
@@ -27,32 +38,27 @@ export const requestRun = mutation({
     error: v.optional(v.string()),
     cooldownSeconds: v.optional(v.number()),
   }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<RunRequestResult> => {
     const user = await userForToken(ctx, args.sessionToken);
     if (user === null) {
       return { ok: false, error: "Please verify your email again." };
     }
 
-    const now = Date.now();
-    const recent = await ctx.db
-      .query("runs")
-      .withIndex("by_user", (q) => q.eq("userId", user._id))
-      .order("desc")
-      .first();
+    const blocked = await ctx.runQuery(internal.deals.data.runBlocked, {
+      userId: user._id,
+      now: Date.now(),
+    });
+    if (blocked !== null) return { ok: false, ...blocked };
 
-    // Throttled on the server, not the button: a run costs real Firecrawl and
-    // model spend, and a disabled button is a suggestion.
-    if (recent !== null && now - recent.startedAt < MANUAL_RUN_COOLDOWN_MS) {
-      const remaining = MANUAL_RUN_COOLDOWN_MS - (now - recent.startedAt);
-      return {
-        ok: false,
-        error: "We are still working on your last request.",
-        cooldownSeconds: Math.ceil(remaining / 1000),
-      };
-    }
-
+    const runId = await ctx.runMutation(internal.deals.data.startRun, {
+      userId: user._id,
+      kind: "deals",
+      trigger: "prompt",
+      now: Date.now(),
+    });
     await ctx.scheduler.runAfter(0, internal.deals.run.execute, {
       userId: user._id,
+      runId,
       trigger: "prompt",
     });
 
@@ -108,7 +114,7 @@ export const findForIngredients = mutation({
     ingredients: v.array(v.string()),
   },
   returns: v.object({ ok: v.boolean(), error: v.optional(v.string()) }),
-  handler: async (ctx, args) => {
+  handler: async (ctx, args): Promise<RunRequestResult> => {
     const user = await userForToken(ctx, args.sessionToken);
     if (user === null) {
       return { ok: false, error: "Please verify your email again." };
@@ -117,8 +123,21 @@ export const findForIngredients = mutation({
       return { ok: false, error: "No ingredients given." };
     }
 
+    const blocked = await ctx.runQuery(internal.deals.data.runBlocked, {
+      userId: user._id,
+      now: Date.now(),
+    });
+    if (blocked !== null) return { ok: false, error: blocked.error };
+
+    const runId = await ctx.runMutation(internal.deals.data.startRun, {
+      userId: user._id,
+      kind: "ingredients",
+      trigger: "ingredients",
+      now: Date.now(),
+    });
     await ctx.scheduler.runAfter(0, internal.deals.run.execute, {
       userId: user._id,
+      runId,
       trigger: "ingredients",
       ingredients: args.ingredients,
     });

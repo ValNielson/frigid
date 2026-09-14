@@ -82,6 +82,24 @@ Run `/hackathon` after meaningful progress to append a dated entry. The skill
 reads local repository evidence only; it will not invent history, and it never
 commits, deploys, or submits.
 
+## Tests
+
+```sh
+npm test          # vitest, single run
+npm run test:watch
+```
+
+Two kinds live in `tests/`. Most are plain unit tests over the pure modules —
+ingredient parsing, JSON-LD extraction, the allergen table, the email and
+location policies — and need nothing running. The rest use `convex-test` to
+drive real Convex functions against an in-memory database; those files open with
+a `// @vitest-environment edge-runtime` pragma, because that is the environment
+Convex functions actually run in.
+
+Nothing here calls Firecrawl, OpenAI, or AgentMail. `FIRECRAWL_MODE=fixture`
+short-circuits every paid Firecrawl call if you want to drive the recipe
+pipeline end to end without spending credits.
+
 ## Frontend hosting
 
 This project deploys to `convex.site` via the official Convex Static Hosting

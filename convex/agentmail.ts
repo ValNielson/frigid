@@ -5,6 +5,13 @@ import { v } from "convex/values";
 import { internalAction } from "./_generated/server";
 import { requireEnv } from "./env";
 
+/**
+ * sendMessage is the only action the product calls. The rest are operator
+ * tools, run by hand from the dashboard or `npx convex run` to confirm the
+ * inbox, the webhook registration, and what actually arrived. They look dead to
+ * a search for call sites and are not.
+ */
+
 function client() {
   return new AgentMailClient({ apiKey: requireEnv("AGENTMAIL_API_KEY") });
 }

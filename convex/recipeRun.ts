@@ -29,15 +29,21 @@ import {
 } from "./recipeCatalog";
 import {
   LLM_MARKDOWN_WINDOW,
+  MAX_DEALS_PER_JOB,
   MAX_ITEMS_PER_STORE_PROBE,
   MAX_LLM_CALLS_PER_JOB,
   MAX_PER_DOMAIN,
   MAX_SCRAPES_PER_JOB,
   MAX_STORE_PROBES,
   RECIPES_PER_JOB,
-  SCRAPE_SPACING_MS,
   SEARCH_LIMIT,
 } from "./recipePolicy";
+import {
+  excludeAllergens,
+  locationKey,
+  matchIngredients,
+  splitStores,
+} from "./deals/policy";
 import {
   buildSearchQuery,
   containsAllergen,
@@ -53,12 +59,15 @@ import {
 import { ingredientsFromMarkdown, recipeFromHtml } from "./recipeJsonLd";
 import { realAllergies } from "./onboardingSummary";
 import { renderRecipeHtml, renderRecipeText } from "./recipeEmail";
+import {
+  unsubscribeHeaders,
+  unsubscribeLine,
+  unsubscribeUrl,
+} from "./emailShell";
 import type { GenericActionCtx } from "convex/server";
 import type { DataModel, Id } from "./_generated/dataModel";
 
 type Ctx = GenericActionCtx<DataModel>;
-
-const pause = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * Runs a step, and makes sure a thrown error becomes a failed job rather than
@@ -286,10 +295,6 @@ export const readRecipes = internalAction({
           accepted += 1;
           continue;
         }
-
-        // Pace rather than burst: the free tier allows 10 requests a minute and
-        // we have measured it rejecting bursts. A rejection still costs time.
-        if (scrapes > 0) await pause(SCRAPE_SPACING_MS);
 
         const page = await ctx.runAction(internal.firecrawlClient.scrapePage, {
           url: candidate.url,
@@ -555,11 +560,220 @@ export const shop = internalAction({
         shopping,
       });
 
-      await ctx.scheduler.runAfter(0, internal.recipeRun.email, { jobId: args.jobId });
+      await ctx.scheduler.runAfter(0, internal.recipeRun.attachDeals, {
+        jobId: args.jobId,
+      });
     }),
 });
 
-// ------------------------------------------------------------------- 4. email
+// ------------------------------------------------------------------- 4. deals
+
+/**
+ * Finds coupons covering this job's own shopping list.
+ *
+ * Two paths, and the difference is cost. A warm pool is a database read and a
+ * substring match — microseconds, so it runs inline and the email goes out with
+ * deals in it. A cold pool means nobody has scraped this city yet, which is a
+ * real coupon run; that is scheduled rather than awaited, and the run releases
+ * the email itself when it lands.
+ *
+ * Not wrapped in guard(): deals are a bonus and recipes are what the user asked
+ * for, so every failure here still ends with the email scheduled rather than
+ * with a failed job.
+ */
+export const attachDeals = internalAction({
+  args: { jobId: v.id("recipeJobs") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const toEmail = () =>
+      ctx.scheduler.runAfter(0, internal.recipeRun.email, { jobId: args.jobId });
+
+    try {
+      const job = await ctx.runQuery(internal.recipeJobs.forRun, {
+        jobId: args.jobId,
+      });
+      if (job === null) return null;
+
+      const items = job.shopping.map((entry) => entry.item);
+      if (items.length === 0) {
+        await ctx.runMutation(internal.recipeJobs.setDeals, {
+          jobId: args.jobId,
+          deals: [],
+        });
+        await toEmail();
+        return null;
+      }
+
+      const { domains } = splitStores(
+        job.answers["stores"]?.choices ?? [],
+      );
+
+      // Read the location cache rather than resolving it. normalizeLocation
+      // would spend an OpenAI call on a miss, and this step runs on every
+      // recipe search — the warm path has to stay a database read or the whole
+      // argument for doing it inline collapses.
+      //
+      // A city nobody has resolved yet simply has no pool, which falls through
+      // to the cold path below; that run resolves and caches it on the way past.
+      const location = job.answers["location"]?.other?.trim() ?? "";
+      const metro =
+        location.length === 0
+          ? null
+          : await ctx.runQuery(internal.deals.data.getLocation, {
+              raw: location,
+            });
+
+      const pool =
+        metro === null
+          ? []
+          : await readPool(
+              ctx,
+              job.userId,
+              domains,
+              locationKey(metro.city, metro.state),
+            );
+
+      if (pool.length > 0) {
+        await ctx.runMutation(internal.recipeJobs.setDeals, {
+          jobId: args.jobId,
+          deals: await toDeals(ctx, pool, items, realAllergies(job.answers)),
+        });
+        await toEmail();
+        return null;
+      }
+
+      // Nothing stored for this person's stores in their city yet. Worth one
+      // real coupon run, if the guard that protects every other run allows it.
+      const blocked =
+        location.length === 0
+          ? { error: "no location" }
+          : await ctx.runQuery(internal.deals.data.runBlocked, {
+              userId: job.userId,
+              now: Date.now(),
+            });
+
+      if (blocked !== null) {
+        await ctx.runMutation(internal.recipeJobs.setDeals, {
+          jobId: args.jobId,
+          deals: [],
+        });
+        await toEmail();
+        return null;
+      }
+
+      await ctx.runMutation(internal.recipeJobs.markStatus, {
+        jobId: args.jobId,
+        status: "dealing",
+        statusDetail: "Checking what is on sale near you",
+      });
+
+      const runId = await ctx.runMutation(internal.deals.data.startRun, {
+        userId: job.userId,
+        kind: "ingredients",
+        trigger: "recipe-cold",
+        now: Date.now(),
+      });
+
+      // Scheduled, not awaited. A cold city is several Firecrawl searches and a
+      // planner call, which is long enough that nesting it inside this action
+      // would risk the action budget and freeze the job's updatedAt.
+      await ctx.scheduler.runAfter(0, internal.deals.run.execute, {
+        userId: job.userId,
+        runId,
+        trigger: "recipe-cold",
+        ingredients: items,
+        sendEmail: false,
+        recipeJobId: args.jobId,
+      });
+
+      return null;
+    } catch {
+      // Whatever went wrong, the recipes are already on the row.
+      await ctx.runMutation(internal.recipeJobs.setDeals, {
+        jobId: args.jobId,
+        deals: [],
+      });
+      await toEmail();
+      return null;
+    }
+  },
+});
+
+/**
+ * The coupons this person may see, for the stores they named, in their own city.
+ *
+ * The metro matters here as much as the store list: a chain's weekly ad is
+ * regional, and reading one city's prices as another's is what made a Cleveland
+ * pool look warm enough to skip scraping Cleveland.
+ */
+async function readPool(
+  ctx: Ctx,
+  userId: Id<"users">,
+  domains: string[],
+  metroKey: string,
+) {
+  if (domains.length === 0) return [];
+  const merchants = await ctx.runQuery(internal.deals.data.merchantsByDomains, {
+    domains,
+  });
+  if (merchants.length === 0) return [];
+  return await ctx.runQuery(internal.deals.data.couponsForUser, {
+    userId,
+    merchantIds: merchants.map((m: { _id: Id<"merchants"> }) => m._id),
+    metroKey,
+    now: Date.now(),
+  });
+}
+
+type PoolCoupon = {
+  merchantId: Id<"merchants">;
+  title: string;
+  details?: string;
+  code?: string;
+  discount?: string;
+  itemTerms: string[];
+  sourceUrl?: string;
+};
+
+/**
+ * Pool to the handful worth printing.
+ *
+ * Allergens are excluded after matching and never delegated to a model, the
+ * same order deals/match.ts uses and for the same reason.
+ */
+async function toDeals(
+  ctx: Ctx,
+  pool: PoolCoupon[],
+  items: string[],
+  allergies: string[],
+) {
+  const matched = excludeAllergens(matchIngredients(pool, items), allergies).slice(
+    0,
+    MAX_DEALS_PER_JOB,
+  );
+  if (matched.length === 0) return [];
+
+  const names = await ctx.runQuery(internal.deals.data.merchantNamesByIds, {
+    merchantIds: matched.map((coupon) => coupon.merchantId),
+  });
+  const nameFor = new Map(
+    names.map((row: { _id: Id<"merchants">; name: string }) => [
+      row._id,
+      row.name,
+    ]),
+  );
+
+  return matched.map((coupon) => ({
+    title: coupon.title,
+    discount: coupon.discount,
+    details: coupon.details,
+    code: coupon.code,
+    sourceUrl: coupon.sourceUrl,
+    merchantName: nameFor.get(coupon.merchantId),
+  }));
+}
+
+// ------------------------------------------------------------------- 5. email
 
 export const email = internalAction({
   args: { jobId: v.id("recipeJobs") },
@@ -585,15 +799,13 @@ export const email = internalAction({
         statusDetail: "Sending your results",
       });
 
-      const siteUrl = requireEnv("CONVEX_SITE_URL").replace(/\/$/, "");
-      const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${encodeURIComponent(
-        job.unsubscribeToken,
-      )}`;
+      const optOutUrl = unsubscribeUrl(job.unsubscribeToken);
 
       const payload = {
         prompt: job.prompt,
         recipes: job.recipes,
         shopping: job.shopping,
+        deals: job.deals,
       };
 
       await ctx.runAction(internal.agentmail.sendMessage, {
@@ -603,12 +815,9 @@ export const email = internalAction({
           job.recipes.length === 1
             ? `A recipe for "${job.prompt}"`
             : `${job.recipes.length} recipes for "${job.prompt}"`,
-        text: `${renderRecipeText(payload)}\n\nUnsubscribe: ${unsubscribeUrl}\n`,
-        html: renderRecipeHtml(payload, unsubscribeUrl),
-        headers: {
-          "List-Unsubscribe": `<${unsubscribeUrl}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
+        text: `${renderRecipeText(payload)}\n\n${unsubscribeLine(optOutUrl)}\n`,
+        html: renderRecipeHtml(payload, optOutUrl),
+        headers: unsubscribeHeaders(optOutUrl),
       });
 
       await ctx.runMutation(internal.recipeJobs.markDone, {

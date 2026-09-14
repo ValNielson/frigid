@@ -163,23 +163,6 @@ export const getMine = query({
   },
 });
 
-/**
- * What recipe generation will read. Returns the pre-built line rather than the
- * raw answers, so callers paste a short string into a prompt instead of paying
- * to re-describe the user every time.
- */
-export const getPromptContext = internalQuery({
-  args: { userId: v.id("users") },
-  returns: v.union(v.string(), v.null()),
-  handler: async (ctx, args) => {
-    const row = await ctx.db
-      .query("preferences")
-      .withIndex("by_user", (q) => q.eq("userId", args.userId))
-      .unique();
-    return row?.promptContext ?? null;
-  },
-});
-
 /** Everything the summary email needs, in one read. */
 export const forSummaryEmail = internalQuery({
   args: { userId: v.id("users") },

@@ -10,6 +10,7 @@
 
 import type * as agentmail from "../agentmail.js";
 import type * as agentmailEvents from "../agentmailEvents.js";
+import type * as allergens from "../allergens.js";
 import type * as credits from "../credits.js";
 import type * as crons from "../crons.js";
 import type * as deals from "../deals.js";
@@ -19,10 +20,12 @@ import type * as deals_match from "../deals/match.js";
 import type * as deals_plan from "../deals/plan.js";
 import type * as deals_policy from "../deals/policy.js";
 import type * as deals_run from "../deals/run.js";
+import type * as emailShell from "../emailShell.js";
 import type * as env from "../env.js";
-import type * as firecrawl from "../firecrawl.js";
 import type * as firecrawlClient from "../firecrawlClient.js";
+import type * as firecrawlRate from "../firecrawlRate.js";
 import type * as fixtures_recipeFixtures from "../fixtures/recipeFixtures.js";
+import type * as foodVocabulary from "../foodVocabulary.js";
 import type * as hash from "../hash.js";
 import type * as http from "../http.js";
 import type * as me from "../me.js";
@@ -42,8 +45,10 @@ import type * as recipeRun from "../recipeRun.js";
 import type * as recipeText from "../recipeText.js";
 import type * as sessions from "../sessions.js";
 import type * as testSeed from "../testSeed.js";
+import type * as testSeedAuth from "../testSeedAuth.js";
 import type * as users from "../users.js";
 import type * as verification from "../verification.js";
+import type * as words from "../words.js";
 
 import type {
   ApiFromModules,
@@ -54,6 +59,7 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentmail: typeof agentmail;
   agentmailEvents: typeof agentmailEvents;
+  allergens: typeof allergens;
   credits: typeof credits;
   crons: typeof crons;
   deals: typeof deals;
@@ -63,10 +69,12 @@ declare const fullApi: ApiFromModules<{
   "deals/plan": typeof deals_plan;
   "deals/policy": typeof deals_policy;
   "deals/run": typeof deals_run;
+  emailShell: typeof emailShell;
   env: typeof env;
-  firecrawl: typeof firecrawl;
   firecrawlClient: typeof firecrawlClient;
+  firecrawlRate: typeof firecrawlRate;
   "fixtures/recipeFixtures": typeof fixtures_recipeFixtures;
+  foodVocabulary: typeof foodVocabulary;
   hash: typeof hash;
   http: typeof http;
   me: typeof me;
@@ -86,8 +94,10 @@ declare const fullApi: ApiFromModules<{
   recipeText: typeof recipeText;
   sessions: typeof sessions;
   testSeed: typeof testSeed;
+  testSeedAuth: typeof testSeedAuth;
   users: typeof users;
   verification: typeof verification;
+  words: typeof words;
 }>;
 
 /**
