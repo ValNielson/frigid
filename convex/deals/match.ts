@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
-import { api } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { excludeAllergens } from "./policy";
 
 /**
@@ -85,7 +85,7 @@ export const selectForProfile = internalAction({
       return `${index}. ${parts.join(" ")}`;
     });
 
-    const raw = await ctx.runAction(api.openai.structured, {
+    const raw = await ctx.runAction(internal.openai.structured, {
       prompt: `Cook's profile: ${args.promptContext}\n\nCandidates:\n${lines.join("\n")}`,
       schemaName: "coupon_picks",
       schemaJson: MATCH_SCHEMA,

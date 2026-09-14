@@ -3,7 +3,7 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { CODE_LENGTH, CODE_TTL_MS, normalizeEmail } from "./policy";
 import { hashSessionToken } from "./hash";
@@ -116,7 +116,7 @@ export const requestCode = action({
       )}`;
       const { text, html } = buildEmail(code, unsubscribeUrl);
 
-      await ctx.runAction(api.agentmail.sendMessage, {
+      await ctx.runAction(internal.agentmail.sendMessage, {
         inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
         to: [email],
         subject: `Your ${FROM_NAME} verification code is ${code}`,

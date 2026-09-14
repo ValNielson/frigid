@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import { requireEnv } from "../env";
 
 /**
@@ -122,7 +122,7 @@ export const send = internalAction({
     )}`;
     const { text, html } = buildEmail(args.picks, unsubscribeUrl);
 
-    await ctx.runAction(api.agentmail.sendMessage, {
+    await ctx.runAction(internal.agentmail.sendMessage, {
       inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
       to: [inputs.email],
       subject:

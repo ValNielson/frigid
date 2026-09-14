@@ -5,18 +5,9 @@ import { useRouter } from "next/navigation";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { writeSessionToken } from "@/app/lib/session";
+import { inputClass, primaryButtonClass } from "@/app/lib/formClasses";
 
 type Stage = { name: "email" } | { name: "code"; email: string };
-
-const inputClass =
-  "w-full rounded-xl border border-border-subtle bg-surface-muted px-4 py-3 text-base " +
-  "text-foreground outline-none transition placeholder:text-muted/70 " +
-  "focus:border-frost focus:ring-2 focus:ring-frost/30 disabled:opacity-60";
-
-const primaryButtonClass =
-  "w-full rounded-full bg-citrus px-5 py-3 text-base font-semibold text-white transition " +
-  "hover:bg-citrus-strong focus-visible:outline-2 focus-visible:outline-offset-2 " +
-  "focus-visible:outline-citrus disabled:cursor-not-allowed disabled:opacity-60";
 
 export function VerifyEmailCard() {
   const router = useRouter();

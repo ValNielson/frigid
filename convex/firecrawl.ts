@@ -2,10 +2,10 @@
 
 import Firecrawl from "firecrawl";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { requireEnv } from "./env";
 
-export const scrape = action({
+export const scrape = internalAction({
   args: { url: v.string() },
   returns: v.object({
     markdown: v.string(),
@@ -170,7 +170,7 @@ function clean(coupon: ExtractedCoupon): ExtractedCoupon {
  * paths move and a stale constant costs a fetch that 404s while looking like a
  * merchant with no deals.
  */
-export const searchDeals = action({
+export const searchDeals = internalAction({
   args: {
     query: v.string(),
     includeDomains: v.optional(v.array(v.string())),
@@ -224,7 +224,7 @@ export const searchDeals = action({
 });
 
 /** Extracts offers from one known deal page. */
-export const scrapeDeals = action({
+export const scrapeDeals = internalAction({
   args: { url: v.string(), maxAgeMs: v.optional(v.number()) },
   returns: v.object({
     sourceUrl: v.union(v.string(), v.null()),
@@ -265,7 +265,7 @@ export const scrapeDeals = action({
  * right chain's store in a city 65 miles away. A search returns what is
  * actually there, so the model only has to know the business exists.
  */
-export const findSite = action({
+export const findSite = internalAction({
   args: { query: v.string() },
   returns: v.union(v.string(), v.null()),
   handler: async (_ctx, args) => {
@@ -303,7 +303,7 @@ function normalizeHost(raw: string): string | null {
  * has never been reconciled against the API. A budget guard reading only its own
  * estimates is fiction; this is the number that settles it.
  */
-export const creditBalance = action({
+export const creditBalance = internalAction({
   args: {},
   returns: v.object({
     remainingCredits: v.number(),

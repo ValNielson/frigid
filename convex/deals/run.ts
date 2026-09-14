@@ -2,7 +2,7 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import type { Id } from "../_generated/dataModel";
 import {
   FIRECRAWL_MAX_AGE_MS,
@@ -170,7 +170,7 @@ export const execute = internalAction({
           continue;
         }
 
-        const pages = await ctx.runAction(api.firecrawl.searchDeals, {
+        const pages = await ctx.runAction(internal.firecrawl.searchDeals, {
           query,
           includeDomains: [domain],
           limit: SEARCH_RESULTS_PER_MERCHANT,

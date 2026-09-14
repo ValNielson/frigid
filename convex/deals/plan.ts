@@ -4,7 +4,7 @@ import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
 import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
-import { api, internal } from "../_generated/api";
+import { internal } from "../_generated/api";
 import {
   MAX_MERCHANTS_PER_STORE_PLAN,
   isDirectorySite,
@@ -89,7 +89,7 @@ export const normalizeLocation = internalAction({
     });
     if (cached !== null) return cached;
 
-    const raw = await ctx.runAction(api.openai.structured, {
+    const raw = await ctx.runAction(internal.openai.structured, {
       prompt: `Location: ${args.raw}`,
       schemaName: "normalized_location",
       schemaJson: LOCATION_SCHEMA,
@@ -153,7 +153,7 @@ export const planForLocation = internalAction({
     const place =
       args.state === undefined ? args.city : `${args.city}, ${args.state}`;
 
-    const raw = await ctx.runAction(api.openai.structured, {
+    const raw = await ctx.runAction(internal.openai.structured, {
       prompt: `City: ${place}.`,
       schemaName: "deal_plan",
       schemaJson: PLAN_SCHEMA,
@@ -250,7 +250,7 @@ export const planForStore = internalAction({
     const place =
       args.state === undefined ? args.city : `${args.city}, ${args.state}`;
 
-    const raw = await ctx.runAction(api.openai.structured, {
+    const raw = await ctx.runAction(internal.openai.structured, {
       prompt: `City: ${place}. The shopper described where they shop as: ${args.store}`,
       schemaName: "store_plan",
       schemaJson: STORE_SCHEMA,
@@ -313,7 +313,7 @@ async function resolveMerchants(
   for (const merchant of merchants) {
     if (merchant.name.trim().length === 0) continue;
 
-    const found = await ctx.runAction(api.firecrawl.findSite, {
+    const found = await ctx.runAction(internal.firecrawl.findSite, {
       query: `${merchant.name} ${place}`,
     });
     const domain = found === null ? null : normalizeDomain(found);

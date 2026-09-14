@@ -113,6 +113,13 @@ bugs now fixed. Clicked through in a browser per the commit message, including
 the returning-user case where an already-onboarded address lands straight on the
 home screen instead of repeating the quiz.
 
+### 2026-09-11 - 65930c5
+Made the AgentMail, Firecrawl, and OpenAI integrations internal. All three had
+been public actions since the scaffold, so anyone with the deployment URL could
+send mail from our inbox to any address, scrape arbitrary URLs on our key, or
+burn model tokens. Nothing in `app/` called them from the client, so closing it
+cost nothing (`convex/agentmail.ts`, `convex/firecrawl.ts`, `convex/openai.ts`).
+
 ### 2026-09-11 - 6fdf972
 Started the coupon pipeline: the feature that finds food deals matched to the
 taste profile onboarding already collects. Cut a fresh branch from main, since
@@ -138,6 +145,56 @@ queries, mutations.
 Verified: 27 unit tests on Node's built-in runner using its native TypeScript
 support, so testing added no dependencies. Schema and all 15 data functions
 deployed to the dev deployment.
+
+### 2026-09-11 - 17066a2
+Shipped the first real product loop: type what you feel like cooking on `/home`,
+and a background job searches recipe sites, reads the ingredients, builds one
+deduped shopping list grouped by store department, and emails it while the
+screen follows along. Verified end to end against the live APIs — real searches,
+real recipes, real mail.
+
+The job row is both the state machine and the UI model, so progress is reactive
+with no polling. Four actions chained through the scheduler rather than
+`@convex-dev/workflow`: that component's headline feature is automatic per-step
+retries, and every retry here spends Firecrawl credits. Convex does not retry
+scheduled actions on its own, so each step marks the job failed instead of
+leaving it stuck. Convex features: schema, indexes, queries, mutations, internal
+actions, scheduled functions, realtime queries (`convex/schema.ts`,
+`convex/recipeJobs.ts`, `convex/recipeRun.ts`, `app/components/RecipeSearchCard.tsx`).
+
+Ingredients come from the schema.org/Recipe JSON-LD that recipe sites publish
+for Google, so the happy path spends no model tokens at all — every run so far
+has used zero. A paid extraction fallback exists behind a per-job cap and a kill
+switch, and has never fired (`convex/recipeJsonLd.ts`, `convex/recipeText.ts`).
+
+Allergy filtering is deterministic keyword matching against the onboarding
+answers, never a model call, because the onboarding email already promises
+allergies are a hard rule. A test account allergic to celery correctly had every
+chicken soup dropped, with the reasons shown rather than hidden.
+
+The free Firecrawl tier is the binding constraint, so caches are keyed on
+normalized content rather than on a user and one person's search warms
+everyone's: a repeated search costs zero credits and finishes in ten seconds.
+Firecrawl's own `maxAge` cache is deliberately unused because it bills full
+price for a hit. Store lookup never fetches a retailer page — the big chains sit
+behind bot walls that would bill us for a CAPTCHA — so every item gets a free
+working link into that store's own search, and a paid probe only adds a real
+product name on top. The email never prints a price it did not verify
+(`convex/recipeCache.ts`, `convex/firecrawlClient.ts`, `convex/recipePolicy.ts`).
+
+Running it live for the first time is what found the interesting bugs: store
+probes were matching the retailers' own recipe articles as products, the
+per-item store cache table existed but nothing ever wrote to it, roundup
+listicles were eating a credit each and returning nothing, and Firecrawl refuses
+the whole Dotdash Meredith portfolio outright. The site allowlist is hand
+verified against the live API with a note not to re-add the bad ones
+(`convex/recipeCatalog.ts`). `FIRECRAWL_MODE=fixture` replays real captured
+responses so the UI and email can be iterated on for free
+(`convex/fixtures/recipeFixtures.ts`).
+
+Not yet checked by a human: the browser click-through of the new card. The page
+builds and prerenders and the data shape is verified, but nobody has pressed the
+button in a browser.
 
 ### 2026-09-11 - dae0405
 Coupon extraction works against real stores. Firecrawl's `json` format does the
@@ -292,4 +349,3 @@ with them is equally dead. Both are fixed by the same step.
 Order of work: deploy to a cloud deployment, set `CONVEX_SITE_URL` to the public
 site URL, register the webhook, then build inbound extraction against real
 messages. Inbound extraction stays unwritten until then.
-

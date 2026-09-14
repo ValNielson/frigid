@@ -2,14 +2,15 @@
 
 import OpenAI from "openai";
 import { v } from "convex/values";
-import { action } from "./_generated/server";
+import { internalAction } from "./_generated/server";
 import { requireEnv } from "./env";
 
-export const complete = action({
+export const complete = internalAction({
   args: {
     prompt: v.string(),
     instructions: v.optional(v.string()),
     model: v.optional(v.string()),
+    maxOutputTokens: v.optional(v.number()),
   },
   returns: v.string(),
   handler: async (_ctx, args) => {
@@ -18,6 +19,9 @@ export const complete = action({
       model: args.model ?? "gpt-5.5",
       instructions: args.instructions,
       input: args.prompt,
+      ...(args.maxOutputTokens !== undefined
+        ? { max_output_tokens: args.maxOutputTokens }
+        : {}),
     });
     return response.output_text;
   },
@@ -35,7 +39,7 @@ export const complete = action({
  * typo-catching this is for. Callers hold the schema as a literal and stringify
  * it at the call site.
  */
-export const structured = action({
+export const structured = internalAction({
   args: {
     prompt: v.string(),
     schemaName: v.string(),
