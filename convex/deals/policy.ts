@@ -588,3 +588,9 @@ export const SEARCH_RESULTS_PER_MERCHANT = 2;
 
 /** Measured cost of one searchDeals call at the limit above. */
 export const SEARCH_DEALS_CREDIT_COST = 12;
+
+/**
+ * Cost of one findSite lookup. A plain search with no extraction, so it bills
+ * far below a coupon scrape — but it is not free and the ledger should say so.
+ */
+export const FIND_SITE_CREDIT_COST = 2;

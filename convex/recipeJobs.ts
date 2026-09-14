@@ -100,11 +100,15 @@ export const start = mutation({
   }),
   handler: async (ctx, args) => {
     const user = await userForToken(ctx, args.sessionToken);
-    if (user === null) return { ok: false, error: "Please verify your email again." };
+    if (user === null)
+      return { ok: false, error: "Please verify your email again." };
 
     const prompt = args.prompt.trim().slice(0, MAX_PROMPT_LENGTH);
     if (prompt.length < MIN_PROMPT_LENGTH) {
-      return { ok: false, error: "Tell us a little more about what you want to cook." };
+      return {
+        ok: false,
+        error: "Tell us a little more about what you want to cook.",
+      };
     }
 
     const preferences = await ctx.db
@@ -112,7 +116,10 @@ export const start = mutation({
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .unique();
     if (preferences === null) {
-      return { ok: false, error: "Finish your taste profile first so we know what to look for." };
+      return {
+        ok: false,
+        error: "Finish your taste profile first so we know what to look for.",
+      };
     }
 
     // One at a time. Searches are slow and cost credits, and a user who clicks
@@ -125,7 +132,10 @@ export const start = mutation({
         )
         .first();
       if (inFlight !== null) {
-        return { ok: false, error: "We're still working on your last search. One moment." };
+        return {
+          ok: false,
+          error: "We're still working on your last search. One moment.",
+        };
       }
     }
 
@@ -141,18 +151,25 @@ export const start = mutation({
       recent.length >= MAX_JOBS_PER_USER_PER_DAY &&
       recent.every((job) => job.createdAt > since)
     ) {
-      return { ok: false, error: "That's all the searches for today. Try again tomorrow." };
+      return {
+        ok: false,
+        error: "That's all the searches for today. Try again tomorrow.",
+      };
     }
 
     // Global brake. The Firecrawl allowance is monthly, so one runaway day
     // must not be able to take the rest of the month with it.
-    const today = await ctx.db
-      .query("recipeJobs")
-      .withIndex("by_created", (q) => q.gt("createdAt", since))
-      .collect();
-    const spentToday = today.reduce((total, job) => total + job.creditsUsed, 0);
+    // Reads the shared ledger rather than these rows alone: coupon discovery
+    // draws on the same Firecrawl allowance, and a brake that cannot see half
+    // the spending is not a brake.
+    const spentToday = await ctx.runQuery(internal.credits.spentToday, {
+      now: Date.now(),
+    });
     if (spentToday >= DAILY_CREDIT_BUDGET) {
-      return { ok: false, error: "We've hit today's search budget. Try again tomorrow." };
+      return {
+        ok: false,
+        error: "We've hit today's search budget. Try again tomorrow.",
+      };
     }
 
     const jobId = await ctx.db.insert("recipeJobs", {
@@ -206,9 +223,12 @@ function toView(job: Doc<"recipeJobs">) {
     jobId: job._id,
     prompt: job.prompt,
     status: job.status,
-    ...(job.statusDetail !== undefined ? { statusDetail: job.statusDetail } : {}),
+    ...(job.statusDetail !== undefined
+      ? { statusDetail: job.statusDetail }
+      : {}),
     stalled:
-      ACTIVE.includes(job.status) && Date.now() - job.updatedAt > STALL_AFTER_MS,
+      ACTIVE.includes(job.status) &&
+      Date.now() - job.updatedAt > STALL_AFTER_MS,
     recipes: job.recipes,
     shopping: job.shopping,
     skipped: job.skipped,
@@ -254,7 +274,10 @@ export const forRun = internalQuery({
       llmCallsUsed: v.number(),
       answers: v.record(
         v.string(),
-        v.object({ choices: v.array(v.string()), other: v.optional(v.string()) }),
+        v.object({
+          choices: v.array(v.string()),
+          other: v.optional(v.string()),
+        }),
       ),
       email: v.string(),
       subscribed: v.boolean(),
@@ -305,11 +328,24 @@ export const markStatus = internalMutation({
     if (job === null) return null;
     await ctx.db.patch(args.jobId, {
       ...(args.status !== undefined ? { status: args.status } : {}),
-      ...(args.statusDetail !== undefined ? { statusDetail: args.statusDetail } : {}),
+      ...(args.statusDetail !== undefined
+        ? { statusDetail: args.statusDetail }
+        : {}),
       creditsUsed: job.creditsUsed + (args.creditsDelta ?? 0),
       llmCallsUsed: job.llmCallsUsed + (args.llmDelta ?? 0),
       updatedAt: Date.now(),
     });
+
+    // Mirrored to the shared ledger here rather than at each call site, so a
+    // fourth place that spends a credit cannot forget to declare it.
+    if ((args.creditsDelta ?? 0) > 0) {
+      await ctx.runMutation(internal.credits.record, {
+        feature: "recipes",
+        credits: args.creditsDelta ?? 0,
+        at: Date.now(),
+      });
+    }
+
     return null;
   },
 });

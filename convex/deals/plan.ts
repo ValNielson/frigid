@@ -6,6 +6,7 @@ import type { GenericActionCtx } from "convex/server";
 import type { DataModel } from "../_generated/dataModel";
 import { internal } from "../_generated/api";
 import {
+  FIND_SITE_CREDIT_COST,
   MAX_MERCHANTS_PER_STORE_PLAN,
   isDirectorySite,
   locationKey,
@@ -315,6 +316,11 @@ async function resolveMerchants(
 
     const found = await ctx.runAction(internal.firecrawl.findSite, {
       query: `${merchant.name} ${place}`,
+    });
+    await ctx.runMutation(internal.credits.record, {
+      feature: "deals-plan",
+      credits: FIND_SITE_CREDIT_COST,
+      at: now,
     });
     const domain = found === null ? null : normalizeDomain(found);
     if (domain === null) continue;

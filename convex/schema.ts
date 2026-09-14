@@ -341,4 +341,15 @@ export default defineSchema({
     fetchedAt: v.number(),
     expiresAt: v.number(),
   }).index("by_lookup_key", ["lookupKey"]),
+
+  // Every Firecrawl credit this app spends, whichever feature spent it.
+  //
+  // The daily budget used to be enforced by summing recipeJobs.creditsUsed,
+  // which made coupon scraping invisible to it — the brake stopped being global
+  // the moment a second pipeline existed. One ledger, one total.
+  creditLedger: defineTable({
+    feature: v.string(),
+    credits: v.number(),
+    at: v.number(),
+  }).index("by_at", ["at"]),
 });

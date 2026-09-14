@@ -7,8 +7,9 @@ import type { Id } from "../_generated/dataModel";
 import {
   FIRECRAWL_MAX_AGE_MS,
   MAX_MERCHANTS_PER_RUN,
-  SEARCH_RESULTS_PER_MERCHANT,
   MAX_STORE_PLANS_PER_RUN,
+  SEARCH_DEALS_CREDIT_COST,
+  SEARCH_RESULTS_PER_MERCHANT,
   matchIngredients,
   matchesMetro,
   splitStores,
@@ -175,6 +176,14 @@ export const execute = internalAction({
           includeDomains: [domain],
           limit: SEARCH_RESULTS_PER_MERCHANT,
           maxAgeMs: FIRECRAWL_MAX_AGE_MS,
+        });
+
+        // Recorded against the shared allowance, not a deals-only tally: recipe
+        // search draws on the same 1,000 credits a month.
+        await ctx.runMutation(internal.credits.record, {
+          feature: "deals",
+          credits: SEARCH_DEALS_CREDIT_COST,
+          at: Date.now(),
         });
 
         counts.scraped += 1;
