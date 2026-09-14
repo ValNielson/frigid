@@ -1,5 +1,6 @@
 import { v } from "convex/values";
 import { internalMutation, internalQuery } from "../_generated/server";
+import { NO_ALLERGIES } from "../onboardingQuestions";
 import {
   MAILABLE_FREQUENCIES,
   MAX_COUPON_POOL,
@@ -458,5 +459,66 @@ export const markDigestSent = internalMutation({
   handler: async (ctx, args) => {
     await ctx.db.patch(args.userId, { lastDigestAt: args.now });
     return null;
+  },
+});
+
+/**
+ * Everything a run needs about one person, in a single read.
+ *
+ * Pulls the three onboarding answers the pipeline acts on plus the pre-built
+ * promptContext, so the action never re-derives a profile from 21 raw answers.
+ */
+export const runInputs = internalQuery({
+  args: { userId: v.id("users") },
+  returns: v.union(
+    v.object({
+      email: v.string(),
+      unsubscribeToken: v.string(),
+      subscribed: v.boolean(),
+      location: v.string(),
+      stores: v.array(v.string()),
+      allergies: v.array(v.string()),
+      promptContext: v.string(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const user = await ctx.db.get(args.userId);
+    if (user === null) return null;
+
+    const preferences = await ctx.db
+      .query("preferences")
+      .withIndex("by_user", (q) => q.eq("userId", args.userId))
+      .unique();
+    if (preferences === null) return null;
+
+    const answers = preferences.answers;
+    const answer = (id: string) => answers[id];
+
+    // Allergies and stores both allow a write-in, and the free text is as
+    // binding as a checkbox — an allergy typed rather than picked still has to
+    // filter, so `other` is folded in alongside the choices.
+    const withOther = (id: string) => {
+      const row = answer(id);
+      if (row === undefined) return [];
+      const other = row.other?.trim();
+      return other === undefined || other.length === 0
+        ? [...row.choices]
+        : [...row.choices, other];
+    };
+
+    return {
+      email: user.email,
+      unsubscribeToken: user.unsubscribeToken,
+      subscribed: user.subscribed,
+      location: answer("location")?.other?.trim() ?? "",
+      stores: withOther("stores"),
+      // The explicit "no allergies" opt-out is an answer, not an allergen, and
+      // passing it through would leave a nonsense term in the filter.
+      allergies: withOther("allergies").filter(
+        (entry) => entry !== NO_ALLERGIES,
+      ),
+      promptContext: preferences.promptContext,
+    };
   },
 });

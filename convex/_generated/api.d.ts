@@ -11,7 +11,11 @@
 import type * as agentmail from "../agentmail.js";
 import type * as agentmailEvents from "../agentmailEvents.js";
 import type * as deals_data from "../deals/data.js";
+import type * as deals_digest from "../deals/digest.js";
+import type * as deals_match from "../deals/match.js";
+import type * as deals_plan from "../deals/plan.js";
 import type * as deals_policy from "../deals/policy.js";
+import type * as deals_run from "../deals/run.js";
 import type * as env from "../env.js";
 import type * as firecrawl from "../firecrawl.js";
 import type * as hash from "../hash.js";
@@ -37,7 +41,11 @@ declare const fullApi: ApiFromModules<{
   agentmail: typeof agentmail;
   agentmailEvents: typeof agentmailEvents;
   "deals/data": typeof deals_data;
+  "deals/digest": typeof deals_digest;
+  "deals/match": typeof deals_match;
+  "deals/plan": typeof deals_plan;
   "deals/policy": typeof deals_policy;
+  "deals/run": typeof deals_run;
   env: typeof env;
   firecrawl: typeof firecrawl;
   hash: typeof hash;

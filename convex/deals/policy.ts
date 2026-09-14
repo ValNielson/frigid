@@ -445,3 +445,30 @@ export const MAILABLE_FREQUENCIES: readonly string[] =
  */
 export const MAX_MERCHANTS_READ = 500;
 export const MAX_COUPON_POOL = 500;
+
+/**
+ * Splits the onboarding `stores` answer into domains we already know and the
+ * entries that need the planner.
+ *
+ * The named chains resolve through STORE_DOMAINS, so the common case — someone
+ * who checked Kroger, Meijer, and Aldi — reaches Firecrawl with no model call
+ * at all. Only the two category options and free-text write-ins need one.
+ */
+export function splitStores(stores: readonly string[]): {
+  domains: string[];
+  vague: string[];
+} {
+  const domains: string[] = [];
+  const vague: string[] = [];
+
+  for (const store of stores) {
+    const known = STORE_DOMAINS[store];
+    if (known !== undefined) {
+      domains.push(known);
+      continue;
+    }
+    if (store.trim().length > 0) vague.push(store.trim());
+  }
+
+  return { domains, vague };
+}

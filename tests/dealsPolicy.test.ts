@@ -12,6 +12,7 @@ import {
   matchIngredients,
   normalizeDomain,
   rawLocationKey,
+  splitStores,
   stripHtml,
   violatesAllergies,
   MAX_EMAIL_CHARS,
@@ -314,4 +315,25 @@ test("known trade-off: 'gluten free' trips the gluten rule", () => {
     itemTerms: ["chickpea", "rotini"],
   };
   assert.equal(violatesAllergies(glutenFreePasta, ["Wheat or gluten"]), true);
+});
+
+test("known chains resolve without the planner, which is the cost win", () => {
+  const { domains, vague } = splitStores(["Kroger", "Meijer", "Aldi"]);
+  assert.deepEqual(domains, ["kroger.com", "meijer.com", "aldi.us"]);
+  assert.equal(vague.length, 0);
+});
+
+test("only category options and write-ins reach the planner", () => {
+  const { domains, vague } = splitStores([
+    "Meijer",
+    "Local co-op or farmers market",
+    "Ferris Coffee",
+  ]);
+  assert.deepEqual(domains, ["meijer.com"]);
+  assert.deepEqual(vague, ["Local co-op or farmers market", "Ferris Coffee"]);
+});
+
+test("empty store answers produce no work", () => {
+  assert.deepEqual(splitStores([]), { domains: [], vague: [] });
+  assert.deepEqual(splitStores(["  "]), { domains: [], vague: [] });
 });

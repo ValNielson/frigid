@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-04T20:27:36Z
+- **Last updated:** 2026-09-11T19:49:30Z
 
 ## Log
 
@@ -112,3 +112,55 @@ and prompt-context rendering exercised directly, which caught three formatting
 bugs now fixed. Clicked through in a browser per the commit message, including
 the returning-user case where an already-onboarded address lands straight on the
 home screen instead of repeating the quiz.
+
+### 2026-09-11 - 6fdf972
+Started the coupon pipeline: the feature that finds food deals matched to the
+taste profile onboarding already collects. Cut a fresh branch from main, since
+the in-flight prompt-screen work predated the onboarding merge and its three
+modified files had all been rewritten by it; the prompt console and shared UI
+recipes carried over and `/prompt` is now gated behind `AuthGate`
+(`app/prompt/page.tsx`).
+
+Added six tables — merchants, coupons, locations, dealPlans, runs — plus
+`lastDigestAt` and a `by_email_frequency` index on users that the existing
+schema comment already assumed existed. Merchants and coupons are shared rather
+than per-user, so one scrape of a public weekly ad serves everyone who shops
+there and Firecrawl cost stays flat as users are added (`convex/schema.ts`,
+`convex/deals/data.ts`).
+
+Allergen filtering is deterministic and runs before any model sees a coupon. A
+model asked to avoid allergens complies almost always, and almost always is the
+wrong standard for the one rule onboarding treats as hard. Matching is
+substring-based and deliberately over-broad, so "butternut squash" trips the
+dairy rule (`convex/deals/policy.ts`). Convex features: schema, tables, indexes,
+queries, mutations.
+
+Verified: 27 unit tests on Node's built-in runner using its native TypeScript
+support, so testing added no dependencies. Schema and all 15 data functions
+deployed to the dev deployment.
+
+### 2026-09-11 - dae0405
+Coupon extraction works against real stores. Firecrawl's `json` format does the
+extraction itself, so search, fetch, and structured extraction are a single call
+that costs no OpenAI tokens — the earlier plan had assumed a model call per
+scraped page (`convex/firecrawl.ts`).
+
+Verified against aldi.us: 35 real offers with prices and item terms. Two defects
+only live pages exposed. Extraction fills absent optional fields with empty
+strings rather than omitting them, and an empty promo code stored as a real one
+would be printed in a digest as something to type at the register. And these
+pages mix groceries with homeware — "food only" in the prompt did not hold and
+the first run returned LED ghosts, while asking for an `isFood` boolean per row
+does hold.
+
+Tests now run the allergen rule against verbatim extracted titles, including
+that teriyaki is withheld for a soy allergy though it never says soy, and that
+"gluten free" trips the gluten rule. The second is over-exclusion in the safe
+direction with a real cost to the user, pinned by a test rather than left to be
+discovered later. 32 tests passing.
+
+Not yet working: the planner, taste matching, the digest, and inbound mail
+extraction all wait on `OPENAI_API_KEY` and `AGENTMAIL_API_KEY`, which are not
+set on the dev deployment. Whether AgentMail delivers plus-addressed mail is
+still unverified and decides whether per-user deal signup ships at all.
+
