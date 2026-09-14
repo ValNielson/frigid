@@ -575,3 +575,16 @@ export function isDirectorySite(domain: string): boolean {
     (known) => host === known || host.endsWith(`.${known}`),
   );
 }
+
+/**
+ * Firecrawl results fetched per merchant.
+ *
+ * Measured, not assumed: one searchDeals call at limit 2 costs 12 credits of a
+ * 1,000/month allowance, because the json format runs server-side extraction on
+ * every result. Each extra result is roughly five more credits, so this is the
+ * dial that decides whether a run costs 60 credits or 35.
+ */
+export const SEARCH_RESULTS_PER_MERCHANT = 2;
+
+/** Measured cost of one searchDeals call at the limit above. */
+export const SEARCH_DEALS_CREDIT_COST = 12;

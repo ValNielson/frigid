@@ -401,6 +401,7 @@ export const startRun = internalMutation({
         couponsFound: 0,
         couponsMatched: 0,
         offMetroDropped: 0,
+        merchantsFresh: 0,
       },
     });
   },
@@ -416,6 +417,9 @@ export const finishRun = internalMutation({
       couponsFound: v.number(),
       couponsMatched: v.number(),
       offMetroDropped: v.optional(v.number()),
+      // Merchants skipped because their last scrape is still inside the TTL.
+      // The saving is the point: each skip is a Firecrawl call not made.
+      merchantsFresh: v.optional(v.number()),
     }),
     skippedMerchants: v.optional(v.array(v.string())),
     error: v.optional(v.string()),

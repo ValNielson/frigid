@@ -7,6 +7,7 @@ import type { Id } from "../_generated/dataModel";
 import {
   FIRECRAWL_MAX_AGE_MS,
   MAX_MERCHANTS_PER_RUN,
+  SEARCH_RESULTS_PER_MERCHANT,
   MAX_STORE_PLANS_PER_RUN,
   matchIngredients,
   matchesMetro,
@@ -72,6 +73,7 @@ export const execute = internalAction({
       couponsFound: 0,
       couponsMatched: 0,
       offMetroDropped: 0,
+      merchantsFresh: 0,
     };
     let skipped: string[] = [];
 
@@ -138,16 +140,11 @@ export const execute = internalAction({
       const fromChains = new Set(domains);
 
       for (const domain of targets) {
-        const pages = await ctx.runAction(api.firecrawl.searchDeals, {
-          query,
-          includeDomains: [domain],
-          limit: 2,
-          maxAgeMs: FIRECRAWL_MAX_AGE_MS,
-        });
-
-        // Only a domain that came from the chain map is claimed as "static".
-        // Plan-derived merchants already have rows carrying their real source,
-        // and upsertMerchant leaves an existing source alone.
+        // The merchant row is created before the search, not after, so its
+        // lastScrapedAt can be consulted while there is still a call to save.
+        // Only a domain from the chain map is claimed as "static"; plan-derived
+        // merchants already have rows carrying their real source, and
+        // upsertMerchant leaves an existing source alone.
         const merchantId = await ctx.runMutation(
           internal.deals.data.upsertMerchant,
           {
@@ -159,6 +156,26 @@ export const execute = internalAction({
           },
         );
         if (merchantId === null) continue;
+
+        // A weekly ad does not change twice in a day, and one measured
+        // searchDeals call costs 12 Firecrawl credits out of a 1,000/month
+        // allowance — so skipping a fresh merchant is the single largest saving
+        // in this pipeline.
+        const stale = await ctx.runQuery(
+          internal.deals.data.merchantsNeedingScrape,
+          { merchantIds: [merchantId], now },
+        );
+        if (stale.length === 0) {
+          counts.merchantsFresh += 1;
+          continue;
+        }
+
+        const pages = await ctx.runAction(api.firecrawl.searchDeals, {
+          query,
+          includeDomains: [domain],
+          limit: SEARCH_RESULTS_PER_MERCHANT,
+          maxAgeMs: FIRECRAWL_MAX_AGE_MS,
+        });
 
         counts.scraped += 1;
 

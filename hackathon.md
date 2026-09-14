@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-14T17:04:35Z
+- **Last updated:** 2026-09-14T17:17:20Z
 
 ## Log
 
@@ -259,4 +259,37 @@ Ordering is now the chains they ticked, then the stores they named, then
 whatever the planner suggested. Re-running the same profile scrapes
 `indiamarketgr.com` and drops the planner's suggestions instead
 (`convex/deals/run.ts`).
+
+### 2026-09-14 - b2e8360
+Settled the plus-addressing question the per-user signup branch has waited on
+since this feature started, now that the AgentMail key carries `inbox_read`.
+
+Mail sent from an external address to `frigid+plustest02@agentmail.to` arrived
+in the base inbox with the tag intact in `message.to`. So one inbox can serve
+many people: each gets their own tagged address to hand to merchants, and
+inbound mail is attributable without creating an inbox per user. An earlier
+self-send to a tagged address was accepted and never delivered back, with no
+bounce, which reads as loop suppression rather than rejection — the external
+test is the one that counts. Sending was confirmed the same way.
+
+Added `listMessages`, `listWebhooks`, and `registerInboundWebhook` to do it
+(`convex/agentmail.ts`). `listMessages` returns recipients verbatim, since that
+is where a tag survives — `inboxId` is normalized and hides it — and returns
+labels, because the listing mixes sent copies with received mail and only the
+labels separate them.
+
+Two blockers found in the process, both pointing the same way. No inbound
+webhook had ever been registered: `convex/http.ts` has served a Svix-verified
+route since the first week and `agentmailEvents` stayed empty for want of anyone
+calling it. And registration fails because this project has only ever run on a
+local Convex backend — `npx convex deployments` reports type `local`, and
+`CONVEX_SITE_URL` is a loopback address AgentMail rejects as unreachable.
+
+That also means unsubscribe links in mail already sent point at a loopback
+address and do not resolve for recipients, and the `List-Unsubscribe` header
+with them is equally dead. Both are fixed by the same step.
+
+Order of work: deploy to a cloud deployment, set `CONVEX_SITE_URL` to the public
+site URL, register the webhook, then build inbound extraction against real
+messages. Inbound extraction stays unwritten until then.
 

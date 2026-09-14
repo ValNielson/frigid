@@ -295,3 +295,28 @@ function normalizeHost(raw: string): string | null {
     return null;
   }
 }
+
+/**
+ * The Firecrawl account's real balance.
+ *
+ * Exists because every cost figure in this project is a hardcoded constant that
+ * has never been reconciled against the API. A budget guard reading only its own
+ * estimates is fiction; this is the number that settles it.
+ */
+export const creditBalance = action({
+  args: {},
+  returns: v.object({
+    remainingCredits: v.number(),
+    planCredits: v.union(v.number(), v.null()),
+  }),
+  handler: async () => {
+    const firecrawl = new Firecrawl({
+      apiKey: requireEnv("FIRECRAWL_API_KEY"),
+    });
+    const usage = await firecrawl.getCreditUsage();
+    return {
+      remainingCredits: usage.remainingCredits ?? 0,
+      planCredits: usage.planCredits ?? null,
+    };
+  },
+});

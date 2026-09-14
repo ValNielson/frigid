@@ -180,6 +180,9 @@ export default defineSchema({
       // because rows written before the check existed genuinely have no value
       // for it; every new run sets it.
       offMetroDropped: v.optional(v.number()),
+      // Merchants skipped because their last scrape is still inside the TTL.
+      // The saving is the point: each skip is a Firecrawl call not made.
+      merchantsFresh: v.optional(v.number()),
     }),
     skippedMerchants: v.optional(v.array(v.string())),
     error: v.optional(v.string()),
