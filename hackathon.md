@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-14T21:10:52Z
+- **Last updated:** 2026-09-14T23:40:43Z
 
 ## Log
 
@@ -403,7 +403,7 @@ declare it. Verified against the live account: a run that actually paid spent 16
 credits and the ledger recorded 16 (`convex/credits.ts`, `convex/recipeJobs.ts`,
 `convex/deals/run.ts`).
 
-### 2026-09-14 - working tree
+### 2026-09-14 - 431be03
 Reviewed the merged branch and fixed what the review turned up. The serious one
 was an authentication bypass: `consumeCode` reported `verified` whenever no code
 was armed and the address had been verified before, and verifying is what mints
