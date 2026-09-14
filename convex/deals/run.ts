@@ -89,7 +89,10 @@ export const execute = internalAction({
       // city we have never resolved, or a store named as a category. Someone
       // who checked only national chains in a known city gets here free.
       let planQueries: string[] = [];
-      let planDomains: string[] = [];
+      // Kept apart because the cap has to prefer stores the user actually
+      // named over merchants the planner merely suggested.
+      let storeDomains: string[] = [];
+      let cityDomains: string[] = [];
       let metro: { city: string; state?: string; zip?: string } | null = null;
 
       if (inputs.location.length > 0) {
@@ -102,7 +105,7 @@ export const execute = internalAction({
             { city: metro.city, state: metro.state },
           );
           planQueries = plan.queries;
-          planDomains = plan.targetUrls;
+          cityDomains = plan.targetUrls;
 
           // Each store the chain map could not answer is resolved and cached
           // on its own, so one person's write-in no longer decides what
@@ -112,12 +115,18 @@ export const execute = internalAction({
               internal.deals.plan.planForStore,
               { city: metro.city, state: metro.state, store },
             );
-            planDomains = [...planDomains, ...resolved];
+            storeDomains = [...storeDomains, ...resolved];
           }
         }
       }
 
-      const wanted = [...new Set([...domains, ...planDomains])];
+      // Order is the priority the cap enforces: the chains they ticked, then
+      // the stores they named, and only then whatever the planner suggested for
+      // the city. Appending store plans last would let speculative merchants
+      // crowd out the shop the user actually asked for.
+      const wanted = [
+        ...new Set([...domains, ...storeDomains, ...cityDomains]),
+      ];
       counts.merchants = wanted.length;
 
       const targets = wanted.slice(0, MAX_MERCHANTS_PER_RUN);
