@@ -3,10 +3,17 @@
 import { createHash, randomBytes, randomInt } from "node:crypto";
 import { v } from "convex/values";
 import { action } from "./_generated/server";
-import { api, internal } from "./_generated/api";
+import { internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { CODE_LENGTH, CODE_TTL_MS, normalizeEmail } from "./policy";
 import { hashSessionToken } from "./hash";
+import {
+  emailCard,
+  escapeHtml,
+  unsubscribeHeaders,
+  unsubscribeLine,
+  unsubscribeUrl,
+} from "./emailShell";
 
 /**
  * Public entry points for email verification.
@@ -28,15 +35,7 @@ function generateCode(): string {
   return String(randomInt(0, max)).padStart(CODE_LENGTH, "0");
 }
 
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
-
-function buildEmail(code: string, unsubscribeUrl: string) {
+function buildEmail(code: string, optOutUrl: string) {
   const minutes = Math.round(CODE_TTL_MS / 60000);
   const text = [
     `Your ${FROM_NAME} verification code is ${code}`,
@@ -45,31 +44,26 @@ function buildEmail(code: string, unsubscribeUrl: string) {
     "",
     "If you did not ask for this, you can ignore this email.",
     "",
-    `Unsubscribe: ${unsubscribeUrl}`,
+    unsubscribeLine(optOutUrl),
   ].join("\n");
 
-  const html = `<!doctype html>
-<html>
-  <body style="margin:0;padding:24px;background:#f4f8fb;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#0f1b24;">
-    <div style="max-width:480px;margin:0 auto;background:#ffffff;border-radius:16px;padding:32px;border:1px solid #dbe7ef;">
-      <p style="margin:0 0 8px;font-size:13px;letter-spacing:.08em;text-transform:uppercase;color:#5d7c8f;">${FROM_NAME}</p>
-      <h1 style="margin:0 0 16px;font-size:22px;line-height:1.3;">Confirm your email</h1>
+  const html = emailCard({
+    title: "Confirm your email",
+    // 480 rather than the default: a six-digit code in a wide card reads as an
+    // empty page with a number in it.
+    maxWidthPx: 480,
+    unsubscribeUrl: optOutUrl,
+    body: `
       <p style="margin:0 0 24px;font-size:15px;line-height:1.6;color:#3d5666;">
         Enter this code to finish verifying your address. It expires in ${minutes} minutes.
       </p>
       <p style="margin:0 0 24px;font-size:34px;font-weight:700;letter-spacing:.28em;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;color:#0f1b24;">
         ${escapeHtml(code)}
       </p>
-      <p style="margin:0 0 24px;font-size:14px;line-height:1.6;color:#5d7c8f;">
+      <p style="margin:0;font-size:14px;line-height:1.6;color:#5d7c8f;">
         If you did not ask for this, you can safely ignore this email.
-      </p>
-      <hr style="border:none;border-top:1px solid #e6eef4;margin:0 0 16px;" />
-      <p style="margin:0;font-size:12px;line-height:1.6;color:#7d97a7;">
-        <a href="${escapeHtml(unsubscribeUrl)}" style="color:#7d97a7;">Unsubscribe from frigid emails</a>
-      </p>
-    </div>
-  </body>
-</html>`;
+      </p>`,
+  });
 
   return { text, html };
 }
@@ -110,24 +104,16 @@ export const requestCode = action({
     });
 
     if (decision.send) {
-      const siteUrl = requireEnv("CONVEX_SITE_URL").replace(/\/$/, "");
-      const unsubscribeUrl = `${siteUrl}/unsubscribe?token=${encodeURIComponent(
-        decision.unsubscribeToken,
-      )}`;
-      const { text, html } = buildEmail(code, unsubscribeUrl);
+      const optOutUrl = unsubscribeUrl(decision.unsubscribeToken);
+      const { text, html } = buildEmail(code, optOutUrl);
 
-      await ctx.runAction(api.agentmail.sendMessage, {
+      await ctx.runAction(internal.agentmail.sendMessage, {
         inboxId: requireEnv("AGENTMAIL_INBOX_ID"),
         to: [email],
         subject: `Your ${FROM_NAME} verification code is ${code}`,
         text,
         html,
-        // Lets Gmail and Apple Mail offer their native one-click unsubscribe,
-        // which POSTs and so is not tripped by link scanners.
-        headers: {
-          "List-Unsubscribe": `<${unsubscribeUrl}>`,
-          "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
-        },
+        headers: unsubscribeHeaders(optOutUrl),
       });
     }
 

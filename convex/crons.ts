@@ -1,0 +1,74 @@
+import { cronJobs } from "convex/server";
+import { internal } from "./_generated/api";
+import { internalAction } from "./_generated/server";
+import { v } from "convex/values";
+
+/**
+ * One daily job rather than a schedule per cadence.
+ *
+ * Every emailFrequency option is served by asking, per user, whether enough
+ * time has passed since their last digest. "Only when I ask" is not a cadence
+ * in that table at all, so the opt-out is enforced by never selecting those
+ * rows — see usersDueForDigest.
+ */
+export const runDueDigests = internalAction({
+  args: {},
+  returns: v.null(),
+  handler: async (ctx) => {
+    const now = Date.now();
+    const due = await ctx.runQuery(internal.deals.data.usersDueForDigest, {
+      now,
+    });
+
+    for (const userId of due) {
+      // The row is created here, which is also what stamps the attempt: a run
+      // that matches nothing sends no mail, and a cadence keyed on sends alone
+      // left those users due again tomorrow, every day, forever.
+      const runId = await ctx.runMutation(internal.deals.data.startRun, {
+        userId,
+        kind: "deals",
+        trigger: "cron",
+        now,
+      });
+      // Scheduled individually so one person's failed run cannot stop everyone
+      // else's mail, and so a long list does not run as one oversized action.
+      await ctx.scheduler.runAfter(0, internal.deals.run.execute, {
+        userId,
+        runId,
+        trigger: "cron",
+      });
+    }
+
+    return null;
+  },
+});
+
+const crons = cronJobs();
+
+// Daily rather than hourly: the most frequent option anyone can choose is once
+// a day, so checking more often would only re-ask a question already answered.
+crons.daily(
+  "deal digests",
+  { hourUTC: 13, minuteUTC: 0 },
+  internal.crons.runDueDigests,
+);
+
+// The request limiter's table is pure working state: nothing reads a request
+// older than a minute, so it is swept rather than kept.
+crons.hourly(
+  "prune firecrawl request log",
+  { minuteUTC: 20 },
+  internal.firecrawlRate.prune,
+  {},
+);
+
+// Off-peak relative to the digest, since the two share nothing and there is no
+// reason to make them contend.
+crons.daily(
+  "prune expired sessions",
+  { hourUTC: 4, minuteUTC: 30 },
+  internal.sessions.pruneExpired,
+  {},
+);
+
+export default crons;

@@ -9,6 +9,12 @@ export const RESEND_COOLDOWN_MS = 60 * 1000; // 1 minute between sends
 export const SEND_WINDOW_MS = 60 * 60 * 1000; // rolling hour
 export const MAX_SENDS_PER_WINDOW = 5;
 
+// Ceiling on code submissions against one address, whatever their outcome.
+// MAX_VERIFY_ATTEMPTS only bites while a code is armed, which leaves every
+// other state — no code issued, code already spent — free to hammer.
+export const VERIFY_WINDOW_MS = 15 * 60 * 1000;
+export const MAX_VERIFY_ATTEMPTS_PER_WINDOW = 20;
+
 // Deliberately permissive. Real validation is "did the code arrive", so this
 // only rejects input that could never be an address.
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;

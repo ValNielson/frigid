@@ -3,8 +3,22 @@ import { Webhook } from "svix";
 import { httpAction } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { requireEnv } from "./env";
+import { escapeHtml } from "./emailShell";
 
 const http = httpRouter();
+
+/**
+ * Well under Convex's 1 MB document ceiling, with room for the wrapper we add
+ * around a payload we do keep.
+ */
+const MAX_PAYLOAD_BYTES = 512 * 1024;
+
+/** A string field off an unknown JSON body, or null if it is not one. */
+function stringField(value: unknown, key: string): string | null {
+  if (typeof value !== "object" || value === null) return null;
+  const field = (value as Record<string, unknown>)[key];
+  return typeof field === "string" && field.length > 0 ? field : null;
+}
 
 http.route({
   path: "/agentmail/webhook",
@@ -23,11 +37,34 @@ http.route({
       return new Response("Invalid signature", { status: 400 });
     }
 
-    const payload = JSON.parse(body);
+    let payload: unknown;
+    try {
+      payload = JSON.parse(body);
+    } catch {
+      return new Response("Malformed JSON", { status: 400 });
+    }
+
+    const eventId = stringField(payload, "event_id");
+    const eventType = stringField(payload, "event_type");
+
+    // A signed request we cannot file is still one we should stop being sent.
+    // These used to go straight into v.string() validators, so a payload
+    // missing either threw, returned 500, and had Svix redeliver the same
+    // unfileable body indefinitely. 400 says "this will never work".
+    if (eventId === null || eventType === null) {
+      return new Response("Missing event_id or event_type", { status: 400 });
+    }
+
     await ctx.runMutation(internal.agentmailEvents.record, {
-      eventId: payload.event_id,
-      eventType: payload.event_type,
-      payload,
+      eventId,
+      eventType,
+      // Convex documents cap at 1 MB and an inbound message with attachments
+      // clears that, which would throw and again invite endless redelivery.
+      // Keep the identity, record that the body was too big, drop the body.
+      payload:
+        body.length > MAX_PAYLOAD_BYTES
+          ? { event_id: eventId, event_type: eventType, truncated: true, bytes: body.length }
+          : payload,
     });
 
     return new Response(null, { status: 204 });
@@ -45,14 +82,6 @@ http.route({
  * message to scan it, and a mutating GET would let those scanners silently
  * unsubscribe people who never clicked.
  * ------------------------------------------------------------------------ */
-
-function escapeHtml(value: string): string {
-  return value
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;");
-}
 
 function page(title: string, body: string): Response {
   const html = `<!doctype html>

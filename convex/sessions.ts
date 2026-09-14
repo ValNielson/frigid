@@ -3,6 +3,9 @@ import { internalMutation, internalQuery } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
 import type { QueryCtx } from "./_generated/server";
 import { hashSessionToken, SESSION_TTL_MS } from "./hash";
+
+/** Bounds one prune pass so it stays inside a single transaction. */
+const MAX_SESSIONS_PRUNED_PER_RUN = 500;
 import { requireEnv } from "./env";
 
 /**
@@ -69,6 +72,27 @@ export const revoke = internalMutation({
       .unique();
     if (session !== null) await ctx.db.delete(session._id);
     return null;
+  },
+});
+
+/**
+ * Deletes sessions whose expiry has passed.
+ *
+ * userForToken already refuses an expired row, so this is housekeeping rather
+ * than access control: nothing else ever deleted a session, so the table grew
+ * for the life of the deployment. Takes a slice per run so one pass cannot
+ * exceed a transaction.
+ */
+export const pruneExpired = internalMutation({
+  args: {},
+  returns: v.number(),
+  handler: async (ctx) => {
+    const expired = await ctx.db
+      .query("sessions")
+      .withIndex("by_expires_at", (q) => q.lt("expiresAt", Date.now()))
+      .take(MAX_SESSIONS_PRUNED_PER_RUN);
+    for (const row of expired) await ctx.db.delete(row._id);
+    return expired.length;
   },
 });
 

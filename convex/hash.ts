@@ -21,4 +21,11 @@ export async function hashSessionToken(
     .join("");
 }
 
-export const SESSION_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
+/**
+ * Seven days, not thirty.
+ *
+ * The token is a bearer credential that travels as a function argument, so it
+ * lands in Convex's function logs as well as in localStorage. Both audiences
+ * are wider than the database, which is the argument for a short life.
+ */
+export const SESSION_TTL_MS = 7 * 24 * 60 * 60 * 1000;

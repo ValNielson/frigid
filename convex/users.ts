@@ -4,8 +4,10 @@ import {
   CODE_TTL_MS,
   MAX_SENDS_PER_WINDOW,
   MAX_VERIFY_ATTEMPTS,
+  MAX_VERIFY_ATTEMPTS_PER_WINDOW,
   RESEND_COOLDOWN_MS,
   SEND_WINDOW_MS,
+  VERIFY_WINDOW_MS,
   constantTimeEquals,
 } from "./policy";
 
@@ -131,11 +133,34 @@ export const consumeCode = internalMutation({
     // used to discover who is on the list.
     if (row === null) return { status: "invalid" as const };
 
-    // No code armed: either already used or never issued.
+    // Rolling cap on submissions against one address, separate from the
+    // per-code counter below. That counter only moves while a code is armed, so
+    // on its own it leaves the unarmed case free to hammer. Kept separate in the
+    // other direction too: spending the armed code's attempts here would let a
+    // stranger burn down the code a user is still typing.
+    const windowExpired =
+      args.now - (row.verifyWindowStartedAt ?? 0) >= VERIFY_WINDOW_MS;
+    const verifyWindowStartedAt = windowExpired
+      ? args.now
+      : (row.verifyWindowStartedAt ?? args.now);
+    const attemptsInWindow = windowExpired ? 0 : (row.verifyAttemptsInWindow ?? 0);
+
+    if (attemptsInWindow >= MAX_VERIFY_ATTEMPTS_PER_WINDOW) {
+      return { status: "too_many_attempts" as const };
+    }
+
+    await ctx.db.patch(row._id, {
+      verifyAttemptsInWindow: attemptsInWindow + 1,
+      verifyWindowStartedAt,
+    });
+
+    // No code armed: either already used or never issued. Never "verified" —
+    // verifying is what mints a session, so reporting success for a code that
+    // was never armed would hand a credential to anyone who knows a verified
+    // address. "invalid" is also what an unknown address gets, so refusing here
+    // still says nothing about who is on the list.
     if (row.codeHash === undefined || row.codeExpiresAt === undefined) {
-      return {
-        status: row.verifiedAt !== undefined ? ("verified" as const) : ("invalid" as const),
-      };
+      return { status: "invalid" as const };
     }
 
     if (args.now > row.codeExpiresAt) return { status: "expired" as const };
@@ -156,6 +181,8 @@ export const consumeCode = internalMutation({
       codeHash: undefined,
       codeExpiresAt: undefined,
       attemptsRemaining: 0,
+      // The throttle exists to bound guessing, and this was not a guess.
+      verifyAttemptsInWindow: 0,
     });
     return { status: "verified" as const };
   },

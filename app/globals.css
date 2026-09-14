@@ -54,3 +54,65 @@ body {
   /* Use the Geist faces layout.tsx wires up, rather than overriding them. */
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
+
+/* Ambient field behind the prompt console: a faint rule grid that dissolves
+   toward the edges, so the surface reads as instrument panel rather than page. */
+.grid-field {
+  background-image:
+    linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
+  background-size: 56px 56px;
+  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 20%, transparent 100%);
+}
+
+@keyframes drift {
+  from {
+    transform: translate3d(-50%, 0, 0) scale(1);
+  }
+  to {
+    transform: translate3d(-50%, 2.5rem, 0) scale(1.12);
+  }
+}
+
+@keyframes sheen {
+  from {
+    background-position: 0% 50%;
+  }
+  to {
+    background-position: 200% 50%;
+  }
+}
+
+@keyframes orb {
+  from {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--frost) 35%, transparent);
+  }
+  to {
+    box-shadow: 0 0 0 0.6rem transparent;
+  }
+}
+
+.animate-drift {
+  animation: drift 18s ease-in-out infinite alternate;
+}
+
+.animate-drift-slow {
+  animation: drift 26s ease-in-out infinite alternate-reverse;
+}
+
+.animate-sheen {
+  animation: sheen 6s linear infinite;
+}
+
+.animate-orb {
+  animation: orb 2.8s ease-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-drift,
+  .animate-drift-slow,
+  .animate-sheen,
+  .animate-orb {
+    animation: none;
+  }
+}
