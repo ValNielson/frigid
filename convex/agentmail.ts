@@ -81,3 +81,80 @@ export const registerWebhook = action({
     return { webhookId: webhook.webhookId, url: webhook.url };
   },
 });
+
+/**
+ * Lists recent messages in an inbox.
+ *
+ * Returns the recipient list verbatim, because that is where a plus-tag lives
+ * if AgentMail preserves one — `inboxId` is normalized and would not show it.
+ */
+export const listMessages = action({
+  args: { inboxId: v.string(), limit: v.optional(v.number()) },
+  returns: v.array(
+    v.object({
+      messageId: v.string(),
+      from: v.string(),
+      to: v.array(v.string()),
+      subject: v.union(v.string(), v.null()),
+      timestamp: v.union(v.string(), v.null()),
+      // Distinguishes a received message from our own sent copy, which the
+      // listing returns alongside it.
+      labels: v.array(v.string()),
+    }),
+  ),
+  handler: async (_ctx, args) => {
+    const response = await client().inboxes.messages.list(args.inboxId, {
+      limit: args.limit ?? 20,
+    });
+    return response.messages.map((message) => ({
+      messageId: message.messageId,
+      from: message.from,
+      to: message.to ?? [],
+      subject: message.subject ?? null,
+      timestamp:
+        message.timestamp === undefined ? null : String(message.timestamp),
+      labels: message.labels ?? [],
+    }));
+  },
+});
+
+/** Lists registered webhooks, so inbound delivery can be confirmed as wired. */
+export const listWebhooks = action({
+  args: {},
+  returns: v.array(
+    v.object({
+      webhookId: v.string(),
+      url: v.string(),
+      eventTypes: v.array(v.string()),
+    }),
+  ),
+  handler: async () => {
+    const response = await client().webhooks.list();
+    return response.webhooks.map((webhook) => ({
+      webhookId: webhook.webhookId,
+      url: webhook.url,
+      eventTypes: (webhook.eventTypes ?? []).map(String),
+    }));
+  },
+});
+
+/**
+ * Points AgentMail's inbound webhook at this deployment.
+ *
+ * A convenience over registerWebhook so the URL comes from the deployment
+ * itself rather than being retyped, which is how a staging webhook ends up
+ * aimed at production. Safe to re-run: AgentMail returns the existing
+ * registration for a URL it already has.
+ */
+export const registerInboundWebhook = action({
+  args: {},
+  returns: v.object({ webhookId: v.string(), url: v.string() }),
+  handler: async () => {
+    const siteUrl = requireEnv("CONVEX_SITE_URL").replace(/\/$/, "");
+    const webhook = await client().webhooks.create({
+      url: `${siteUrl}/agentmail/webhook`,
+      eventTypes: ["message.received"] as AgentMail.EventType[],
+    });
+    return { webhookId: webhook.webhookId, url: webhook.url };
+  },
+});

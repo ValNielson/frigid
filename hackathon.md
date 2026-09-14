@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-14T13:52:39Z
+- **Last updated:** 2026-09-14T17:04:35Z
 
 ## Log
 
@@ -211,4 +211,52 @@ lacks `inbox_read`, so no digest has been delivered to a real mailbox yet and
 the plus-addressing question that decides per-user deal signup is still
 unanswered. Deal plans are cached per city, so a write-in store reaches
 Firecrawl only when that city is planned for the first time.
+
+### 2026-09-14 - 51e8718
+Fixed two faults in deal planning that had to land together.
+
+The city plan cache swallowed write-in stores. `planForLocation` returned from
+cache before reading its `vagueStores` argument, so the first person to run in a
+city fixed the plan for everyone after — if they did not tick "Local co-op or
+farmers market" and you did, your tick did nothing, with no error and no log.
+Write-ins now cache on `(location, store)` in a new `storePlans` table, so the
+shared city plan stays shared and combinations never multiply
+(`convex/schema.ts`, `convex/deals/plan.ts`).
+
+Caching that would have made the second fault permanent. Checking the five
+domains the model had proposed for Grand Rapids against the live web, one was
+usable: one was NXDOMAIN, one published no deals page, one was a farmers market,
+and `shophorrocks.com` was the right chain's Lansing store 65 miles away —
+serving a current, well-formed specials page that would have been ingested as
+Grand Rapids pricing with nothing looking wrong. The model now returns business
+names only and Firecrawl resolves the domain; Horrocks now resolves to
+`horrocksmarket.com`, the Kentwood store, and the dead domain is gone
+(`convex/firecrawl.ts`).
+
+Scraped pages from model-proposed merchants must now prove they serve the user's
+metro before their coupons are kept. The check is skipped for the named chains,
+whose ad pages often print no city and whose domain is already the guarantee —
+asserting against them would have discarded the coupons that actually work.
+Drops are counted on the run rather than silently lost. Live runs recorded 12
+and 4 coupons dropped this way (`convex/deals/policy.ts`, `convex/deals/run.ts`).
+
+Live testing caught one more: a name search for a small shop often ranks its
+Yelp listing above its own site, and a directory sets no prices, so those are
+filtered. Plans now expire after 30 days — `createdAt` was stored and never
+read, and a domain going dark is exactly the rot needing an upper bound.
+
+Verified: two seeded Grand Rapids profiles with different write-ins now share
+one `dealPlans` row and hold two separate `storePlans` rows. 44 unit tests pass.
+`convex/testSeed.ts` is committed rather than written and deleted a third time.
+
+### 2026-09-14 - c708c90
+The merchant cap was defeating the fix above. Run B resolved the user's write-in
+store correctly and then dropped it: the cap took the first five of chains, then
+city plan, then store plans, and store plans were appended last, so speculative
+planner suggestions crowded out the shop actually asked for.
+
+Ordering is now the chains they ticked, then the stores they named, then
+whatever the planner suggested. Re-running the same profile scrapes
+`indiamarketgr.com` and drops the planner's suggestions instead
+(`convex/deals/run.ts`).
 
