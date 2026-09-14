@@ -1,6 +1,9 @@
 "use client";
 
 import { useRef, useState } from "react";
+import { useMutation } from "convex/react";
+import { api } from "@/convex/_generated/api";
+import { useSessionToken } from "@/app/lib/session";
 import { cardClass, primaryButtonClass } from "./ui";
 
 const EXAMPLES = [
@@ -35,9 +38,13 @@ const chipClass =
 
 export function PromptConsole() {
   const [prompt, setPrompt] = useState("");
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sendRef = useRef<HTMLButtonElement>(null);
   const dialogRef = useRef<HTMLDialogElement>(null);
+  const session = useSessionToken();
+  const requestRun = useMutation(api.deals.requestRun);
 
   function resize(element: HTMLTextAreaElement) {
     element.style.height = "auto";
@@ -52,13 +59,36 @@ export function PromptConsole() {
     resize(composer);
   }
 
-  function submit() {
-    if (prompt.trim() === "") return;
-    dialogRef.current?.showModal();
+  async function submit() {
+    const text = prompt.trim();
+    if (text === "" || sending) return;
+    if (session.status !== "ready" || session.token === null) {
+      setError("Please verify your email again.");
+      return;
+    }
+
+    setSending(true);
+    setError(null);
+    try {
+      const result = await requestRun({
+        sessionToken: session.token,
+        prompt: text,
+      });
+      if (!result.ok) {
+        setError(result.error ?? "Something went wrong. Try again.");
+        return;
+      }
+      dialogRef.current?.showModal();
+    } catch {
+      setError("We could not reach frigid. Check your connection and retry.");
+    } finally {
+      setSending(false);
+    }
   }
 
   function reset() {
     setPrompt("");
+    setError(null);
     const composer = composerRef.current;
     if (composer !== null) composer.style.height = "auto";
     sendRef.current?.focus();
@@ -74,8 +104,9 @@ export function PromptConsole() {
           ❄
         </div>
         <div className="rounded-2xl rounded-tl-md border border-border-subtle bg-surface-muted px-4 py-3 text-sm leading-relaxed">
-          Ask me one thing about food &mdash; a recipe, a shopping list, a coupon
-          worth using. I&rsquo;ll go work on it and email the answer back to you.
+          Ask me one thing about food &mdash; a recipe, a shopping list, a
+          coupon worth using. I&rsquo;ll go work on it and email the answer back
+          to you.
         </div>
       </div>
 
@@ -140,18 +171,23 @@ export function PromptConsole() {
             <button
               type="submit"
               ref={sendRef}
-              disabled={prompt.trim() === ""}
-              aria-label="Send prompt"
+              disabled={prompt.trim() === "" || sending}
+              aria-label={sending ? "Sending prompt" : "Send prompt"}
               className={sendButtonClass}
             >
-              ↑
+              {sending ? "…" : "↑"}
             </button>
           </div>
         </div>
       </form>
 
-      <p role="status" aria-live="polite" className="mt-4 text-center text-xs text-muted">
-        One question per send. Answers arrive by email, not on this screen.
+      <p
+        role="status"
+        aria-live="polite"
+        className="mt-4 text-center text-xs text-muted"
+      >
+        {error ??
+          "One question per send. Answers arrive by email, not on this screen."}
       </p>
 
       <dialog
@@ -167,12 +203,15 @@ export function PromptConsole() {
           >
             ✓
           </div>
-          <h2 id="sent-heading" className="text-2xl font-semibold tracking-tight">
+          <h2
+            id="sent-heading"
+            className="text-2xl font-semibold tracking-tight"
+          >
             Your results are on the way
           </h2>
           <p className="mt-3 text-muted">
-            Results will be sent to your email &mdash; we&rsquo;ll send them over
-            as soon as they&rsquo;re ready.
+            Results will be sent to your email &mdash; we&rsquo;ll send them
+            over as soon as they&rsquo;re ready.
           </p>
           <button
             type="button"

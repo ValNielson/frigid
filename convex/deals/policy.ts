@@ -472,3 +472,10 @@ export function splitStores(stores: readonly string[]): {
 
   return { domains, vague };
 }
+
+/**
+ * Minimum gap between manual runs for one person. Enforced server-side, since
+ * a run costs real Firecrawl and model spend and a disabled button is only a
+ * suggestion.
+ */
+export const MANUAL_RUN_COOLDOWN_MS = 5 * 60 * 1000;

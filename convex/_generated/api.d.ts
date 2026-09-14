@@ -10,6 +10,8 @@
 
 import type * as agentmail from "../agentmail.js";
 import type * as agentmailEvents from "../agentmailEvents.js";
+import type * as crons from "../crons.js";
+import type * as deals from "../deals.js";
 import type * as deals_data from "../deals/data.js";
 import type * as deals_digest from "../deals/digest.js";
 import type * as deals_match from "../deals/match.js";
@@ -40,6 +42,8 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentmail: typeof agentmail;
   agentmailEvents: typeof agentmailEvents;
+  crons: typeof crons;
+  deals: typeof deals;
   "deals/data": typeof deals_data;
   "deals/digest": typeof deals_digest;
   "deals/match": typeof deals_match;
