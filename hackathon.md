@@ -9,11 +9,11 @@
 - **Convex deployment:** not deployed
 - **Components:** @convex-dev/static-hosting
 - **Convex features:** schema, tables, indexes, queries, mutations, actions, HTTP
-  actions, scheduled functions, realtime queries
+  actions, crons, scheduled functions, realtime queries
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-11T19:49:30Z
+- **Last updated:** 2026-09-14T13:52:39Z
 
 ## Log
 
@@ -163,4 +163,52 @@ Not yet working: the planner, taste matching, the digest, and inbound mail
 extraction all wait on `OPENAI_API_KEY` and `AGENTMAIL_API_KEY`, which are not
 set on the dev deployment. Whether AgentMail delivers plus-addressed mail is
 still unverified and decides whether per-user deal signup ships at all.
+
+### 2026-09-14 - d51690b
+Built the path from a stored profile to an emailed digest. A structured-output
+action constrains a completion to a JSON Schema with `strict: true`, so a
+malformed response fails at the call instead of downstream. Raw JSON Schema
+rather than the SDK's zod helper, since zod is only present transitively
+through the openai package (`convex/openai.ts`).
+
+The planner earns its model call on the case a lookup table cannot cover. For
+Grand Rapids it named Ken's Fruit Market, Kingma's, Horrocks, and the Fulton
+Street Farmers Market — real local businesses. Both caches verified live: a ZIP
+resolves to the right city, and a second plan request with different casing and
+different write-in stores came back cached with no model call
+(`convex/deals/plan.ts`).
+
+Matching runs allergen exclusion first and deterministically, then one batched
+call over every survivor rather than a call per coupon. The model refers to
+candidates by position, so an out-of-range or repeated index is dropped rather
+than trusted — otherwise a digest could feature a coupon that was never a
+candidate (`convex/deals/match.ts`). The digest itself is a pure template and
+re-reads subscription state before sending, since someone can opt out between a
+run starting and its mail going out (`convex/deals/digest.ts`).
+
+### 2026-09-14 - edf03d1
+The pipeline runs end to end. One daily cron serves every email frequency by
+asking per user whether enough time has passed; each due user is scheduled
+separately so one failed run cannot stop everyone else's mail
+(`convex/crons.ts`). Manual runs are throttled server-side — a run costs real
+Firecrawl and model spend, and a disabled button is only a suggestion. The
+prompt console now starts a real run (`convex/deals.ts`,
+`app/components/PromptConsole.tsx`). Convex features: crons, scheduled
+functions.
+
+The typed prompt is deliberately not sent to a model. It tells us someone wants
+deals now; their stored profile already answers which ones.
+
+Verified against a seeded Grand Rapids profile: 7 merchants wanted, capped at 5
+per run with the 2 dropped recorded on the run row, 87 coupons extracted, 12
+matched. The run took 75 seconds, which is why it is scheduled rather than
+awaited. The allergen rule was exercised against the live pool rather than
+fixtures — with shellfish and tree nuts declared, a crab rangoon offer was
+withheld from 75 real scraped coupons.
+
+Still open: inbound mail extraction is unwritten because the AgentMail key
+lacks `inbox_read`, so no digest has been delivered to a real mailbox yet and
+the plus-addressing question that decides per-user deal signup is still
+unanswered. Deal plans are cached per city, so a write-in store reaches
+Firecrawl only when that city is planned for the first time.
 

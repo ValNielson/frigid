@@ -148,6 +148,18 @@ export default defineSchema({
     createdAt: v.number(),
   }).index("by_location_key", ["locationKey"]),
 
+  // What one write-in store resolves to in one city. Separate from dealPlans so
+  // the shared city plan stays shared: keying either on the combination would
+  // mean a fresh plan per distinct set of write-ins, which is most of what the
+  // cache was for.
+  storePlans: defineTable({
+    locationKey: v.string(),
+    // Normalized, so casing cannot fork one shop into two cached plans.
+    storeKey: v.string(),
+    domains: v.array(v.string()),
+    createdAt: v.number(),
+  }).index("by_location_store", ["locationKey", "storeKey"]),
+
   // One row per pipeline execution. Exists so a run that silently found nothing
   // is distinguishable from one that never started, and so the merchant cap is
   // visible rather than looking like full coverage.
@@ -163,6 +175,11 @@ export default defineSchema({
       scraped: v.number(),
       couponsFound: v.number(),
       couponsMatched: v.number(),
+      // Coupons discarded because a proposed merchant's page could not prove
+      // it serves this metro. Counted rather than silently dropped. Optional
+      // because rows written before the check existed genuinely have no value
+      // for it; every new run sets it.
+      offMetroDropped: v.optional(v.number()),
     }),
     skippedMerchants: v.optional(v.array(v.string())),
     error: v.optional(v.string()),

@@ -2,8 +2,15 @@
 
 import { v } from "convex/values";
 import { internalAction } from "../_generated/server";
+import type { GenericActionCtx } from "convex/server";
+import type { DataModel } from "../_generated/dataModel";
 import { api, internal } from "../_generated/api";
-import { locationKey, normalizeDomain } from "./policy";
+import {
+  MAX_MERCHANTS_PER_STORE_PLAN,
+  isDirectorySite,
+  locationKey,
+  normalizeDomain,
+} from "./policy";
 
 /**
  * Turns a user's onboarding answers into something Firecrawl can execute.
@@ -41,11 +48,10 @@ const PLAN_SCHEMA = JSON.stringify({
       items: {
         type: "object",
         properties: {
-          name: { type: "string" },
-          domain: { type: "string", description: "Bare hostname, or empty" },
+          name: { type: "string", description: "The business name only" },
           kind: { type: "string", enum: ["grocery", "restaurant", "other"] },
         },
-        required: ["name", "domain", "kind"],
+        required: ["name", "kind"],
         additionalProperties: false,
       },
     },
@@ -127,11 +133,7 @@ export const normalizeLocation = internalAction({
  * when matching, which costs nothing — so one call serves every user there.
  */
 export const planForLocation = internalAction({
-  args: {
-    city: v.string(),
-    state: v.optional(v.string()),
-    vagueStores: v.array(v.string()),
-  },
+  args: { city: v.string(), state: v.optional(v.string()) },
   returns: v.object({
     queries: v.array(v.string()),
     targetUrls: v.array(v.string()),
@@ -144,18 +146,15 @@ export const planForLocation = internalAction({
 
     const cached = await ctx.runQuery(internal.deals.data.getPlan, {
       locationKey: key,
+      now: Date.now(),
     });
     if (cached !== null) return cached;
 
     const place =
       args.state === undefined ? args.city : `${args.city}, ${args.state}`;
-    const wanted =
-      args.vagueStores.length > 0
-        ? `They also shop at: ${args.vagueStores.join("; ")}.`
-        : "";
 
     const raw = await ctx.runAction(api.openai.structured, {
-      prompt: `City: ${place}. ${wanted}`,
+      prompt: `City: ${place}.`,
       schemaName: "deal_plan",
       schemaJson: PLAN_SCHEMA,
       instructions:
@@ -169,7 +168,7 @@ export const planForLocation = internalAction({
 
     let parsed: {
       queries?: string[];
-      localMerchants?: { name: string; domain: string; kind: string }[];
+      localMerchants?: { name: string; kind: string }[];
     };
     try {
       parsed = JSON.parse(raw);
@@ -180,23 +179,13 @@ export const planForLocation = internalAction({
     const now = Date.now();
     const queries = (parsed.queries ?? []).filter((q) => q.trim().length > 0);
 
-    // Local merchants become rows immediately, so a later run in the same city
-    // finds them without re-planning, and so the scraper can reach them the
-    // same way it reaches the chains.
-    const targetUrls: string[] = [];
-    for (const merchant of parsed.localMerchants ?? []) {
-      const domain = normalizeDomain(merchant.domain ?? "");
-      if (domain === null) continue;
-      await ctx.runMutation(internal.deals.data.upsertMerchant, {
-        name: merchant.name,
-        domain,
-        city: key,
-        kind: merchant.kind ?? "other",
-        source: "codex",
-        now,
-      });
-      targetUrls.push(domain);
-    }
+    const targetUrls = await resolveMerchants(
+      ctx,
+      parsed.localMerchants ?? [],
+      place,
+      key,
+      now,
+    );
 
     const plan = { queries, targetUrls };
     await ctx.runMutation(internal.deals.data.savePlan, {
@@ -208,3 +197,144 @@ export const planForLocation = internalAction({
     return plan;
   },
 });
+
+const STORE_SCHEMA = JSON.stringify({
+  type: "object",
+  properties: {
+    merchants: {
+      type: "array",
+      description:
+        "Real food businesses in this city matching the description. Leave " +
+        "empty rather than inventing one.",
+      items: {
+        type: "object",
+        properties: {
+          name: { type: "string", description: "The business name only" },
+          kind: { type: "string", enum: ["grocery", "restaurant", "other"] },
+        },
+        required: ["name", "kind"],
+        additionalProperties: false,
+      },
+    },
+  },
+  required: ["merchants"],
+  additionalProperties: false,
+});
+
+/**
+ * Resolves one store a user named, cached per city and store.
+ *
+ * Serves both a specific write-in and a category like "Local co-op or farmers
+ * market": both are stable answers for a city and both are worth sharing. The
+ * key is the pair, so combinations of write-ins never multiply into separate
+ * city plans.
+ */
+export const planForStore = internalAction({
+  args: {
+    city: v.string(),
+    state: v.optional(v.string()),
+    store: v.string(),
+  },
+  returns: v.array(v.string()),
+  handler: async (ctx, args): Promise<string[]> => {
+    const key = locationKey(args.city, args.state);
+    const now = Date.now();
+
+    const cached = await ctx.runQuery(internal.deals.data.getStorePlan, {
+      locationKey: key,
+      store: args.store,
+      now,
+    });
+    if (cached !== null) return cached;
+
+    const place =
+      args.state === undefined ? args.city : `${args.city}, ${args.state}`;
+
+    const raw = await ctx.runAction(api.openai.structured, {
+      prompt: `City: ${place}. The shopper described where they shop as: ${args.store}`,
+      schemaName: "store_plan",
+      schemaJson: STORE_SCHEMA,
+      instructions:
+        `Name up to ${MAX_MERCHANTS_PER_STORE_PLAN} real food businesses in ` +
+        "this city matching how the shopper described where they shop. Only " +
+        "name businesses you are confident exist; an empty list is better " +
+        "than a plausible invention. Give the business name alone — the " +
+        "website is looked up separately.",
+    });
+
+    let parsed: { merchants?: { name: string; kind: string }[] };
+    try {
+      parsed = JSON.parse(raw);
+    } catch {
+      return [];
+    }
+
+    const domains = await resolveMerchants(
+      ctx,
+      (parsed.merchants ?? []).slice(0, MAX_MERCHANTS_PER_STORE_PLAN),
+      place,
+      key,
+      now,
+    );
+
+    // An empty result is stored too. It reads as "we looked", and the plan TTL
+    // is what makes the pipeline try again later rather than never.
+    await ctx.runMutation(internal.deals.data.saveStorePlan, {
+      locationKey: key,
+      store: args.store,
+      domains,
+      now,
+    });
+
+    return domains;
+  },
+});
+
+/**
+ * Turns named businesses into domains that actually exist, writing a merchant
+ * row for each.
+ *
+ * The lookup is the point. A model asked for domains directly returned one
+ * usable answer out of five for a single city: a dead domain, a shop with no
+ * deals page, a farmers market, and — worst — the right chain's store in a city
+ * 65 miles away, whose current, well-formed specials page would have been
+ * ingested as local pricing. Searching for the name returns what is really
+ * there.
+ */
+async function resolveMerchants(
+  ctx: GenericActionCtx<DataModel>,
+  merchants: { name: string; kind: string }[],
+  place: string,
+  city: string,
+  now: number,
+): Promise<string[]> {
+  const domains: string[] = [];
+
+  for (const merchant of merchants) {
+    if (merchant.name.trim().length === 0) continue;
+
+    const found = await ctx.runAction(api.firecrawl.findSite, {
+      query: `${merchant.name} ${place}`,
+    });
+    const domain = found === null ? null : normalizeDomain(found);
+    if (domain === null) continue;
+    // A search for a small shop often puts its Yelp or Facebook listing above
+    // its own site, and a directory sets no prices.
+    if (isDirectorySite(domain)) continue;
+    if (domains.includes(domain)) continue;
+
+    await ctx.runMutation(internal.deals.data.upsertMerchant, {
+      name: merchant.name,
+      domain,
+      city,
+      kind: merchant.kind ?? "other",
+      // Marks it as proposed rather than known, which is what makes the
+      // geography check apply to it at scrape time.
+      source: "codex",
+      now,
+    });
+    domains.push(domain);
+  }
+
+  return domains;
+}

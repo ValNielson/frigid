@@ -30,6 +30,7 @@ import type * as openai from "../openai.js";
 import type * as policy from "../policy.js";
 import type * as preferences from "../preferences.js";
 import type * as sessions from "../sessions.js";
+import type * as testSeed from "../testSeed.js";
 import type * as users from "../users.js";
 import type * as verification from "../verification.js";
 
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   policy: typeof policy;
   preferences: typeof preferences;
   sessions: typeof sessions;
+  testSeed: typeof testSeed;
   users: typeof users;
   verification: typeof verification;
 }>;

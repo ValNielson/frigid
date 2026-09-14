@@ -6,13 +6,17 @@ import {
   emailTextForModel,
   excludeAllergens,
   isDigestDue,
+  isDirectorySite,
   isLikelyPromotional,
+  isPlanFresh,
   isScrapeFresh,
   locationKey,
   matchIngredients,
+  matchesMetro,
   normalizeDomain,
   rawLocationKey,
   splitStores,
+  storePlanKey,
   stripHtml,
   violatesAllergies,
   MAX_EMAIL_CHARS,
@@ -336,4 +340,78 @@ test("only category options and write-ins reach the planner", () => {
 test("empty store answers produce no work", () => {
   assert.deepEqual(splitStores([]), { domains: [], vague: [] });
   assert.deepEqual(splitStores(["  "]), { domains: [], vague: [] });
+});
+
+test("store plan keys collapse case and whitespace", () => {
+  assert.equal(
+    storePlanKey("  Bombay   Grocers "),
+    storePlanKey("bombay grocers"),
+  );
+  assert.notEqual(
+    storePlanKey("Bombay Grocers"),
+    storePlanKey("Bombay Market"),
+  );
+});
+
+test("plan freshness respects the 30-day boundary", () => {
+  const now = 1_000_000_000_000;
+  const day = 24 * 60 * 60 * 1000;
+  assert.equal(isPlanFresh(now - 29 * day, now), true);
+  assert.equal(isPlanFresh(now - 31 * day, now), false);
+});
+
+// The Horrocks case, which is the reason this rule exists: the Lansing store
+// serves a current, well-formed specials page that would otherwise be ingested
+// as Grand Rapids pricing.
+const GR = { city: "Grand Rapids", state: "MI", zip: "49503" };
+
+test("metro check accepts a page naming the city", () => {
+  assert.equal(
+    matchesMetro("Weekly specials at our Grand Rapids store", GR),
+    true,
+  );
+});
+
+test("metro check accepts a page naming a ZIP in the same metro", () => {
+  // Kentwood, the Grand Rapids-area Horrocks.
+  assert.equal(matchesMetro("4455 Breton Rd SE, Kentwood MI 49508", GR), true);
+});
+
+test("metro check rejects the right brand in the wrong city", () => {
+  assert.equal(
+    matchesMetro("Horrocks: 7420 W. Saginaw, Lansing MI 48917", GR),
+    false,
+  );
+});
+
+test("metro check rejects a page naming no place at all", () => {
+  // The conservative direction: a page that cannot prove where it belongs is
+  // not accepted on the strength of having been proposed.
+  assert.equal(matchesMetro("2 for $6 cereal. Save big this week.", GR), false);
+});
+
+test("metro check does not let a neighbouring ZIP prefix through", () => {
+  assert.equal(matchesMetro("Somewhere in 48917", GR), false);
+});
+
+test("directory listings are not merchants", () => {
+  // A name search for a small shop routinely ranks these above its own site.
+  for (const host of [
+    "yelp.com",
+    "m.yelp.com",
+    "www.facebook.com",
+    "doordash.com",
+  ]) {
+    assert.equal(isDirectorySite(host), true);
+  }
+});
+
+test("real merchant domains are not mistaken for directories", () => {
+  for (const host of [
+    "kensfruitmarket.com",
+    "horrocksmarket.com",
+    "indiatowngrr.com",
+  ]) {
+    assert.equal(isDirectorySite(host), false);
+  }
 });

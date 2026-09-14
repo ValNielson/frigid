@@ -479,3 +479,99 @@ export function splitStores(stores: readonly string[]): {
  * suggestion.
  */
 export const MANUAL_RUN_COOLDOWN_MS = 5 * 60 * 1000;
+
+/**
+ * Deal plans go stale the way anything scraped from the world does: a co-op
+ * closes, a domain lapses, a search phrasing stops working. Thirty days keeps
+ * the cost negligible while bounding how wrong a cached plan can get.
+ */
+export const PLAN_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+
+/** Store plans consulted in one run, and merchants resolved per store plan. */
+export const MAX_STORE_PLANS_PER_RUN = 3;
+export const MAX_MERCHANTS_PER_STORE_PLAN = 3;
+
+/** Whether a cached plan is still worth reusing. */
+export function isPlanFresh(createdAt: number, now: number): boolean {
+  return now - createdAt < PLAN_TTL_MS;
+}
+
+/**
+ * The cache key for one write-in store. Normalized so "Bombay Grocers" and
+ * "bombay  grocers" are one entry rather than two plans for one shop.
+ */
+export function storePlanKey(store: string): string {
+  return store.trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+/**
+ * Whether a scraped page belongs to the user's metro.
+ *
+ * Exists because a model naming local businesses will sometimes hand back the
+ * right brand in the wrong city — a Lansing store page serves current,
+ * well-formed specials that would otherwise be ingested as this user's prices,
+ * and nothing downstream would look wrong. Like the allergen rule, it discards
+ * rather than risk being confidently wrong.
+ *
+ * Only applied to merchants a model or a search proposed. A national chain's ad
+ * page often names no city at all, and its domain is already the guarantee.
+ */
+export function matchesMetro(
+  pageText: string,
+  place: { city: string; state?: string; zip?: string },
+): boolean {
+  const haystack = pageText.toLowerCase();
+
+  if (haystack.includes(place.city.trim().toLowerCase())) return true;
+
+  // Same first three digits covers a metro's ZIPs without reaching the next
+  // one over, which a two-digit prefix would.
+  const prefix = place.zip?.trim().slice(0, 3);
+  if (prefix !== undefined && prefix.length === 3) {
+    if (new RegExp(`\\b${prefix}\\d{2}\\b`).test(haystack)) return true;
+  }
+
+  return false;
+}
+
+/**
+ * Sites that describe merchants rather than being one.
+ *
+ * A name search for a small shop often surfaces its Yelp or Facebook listing
+ * above its own site, and storing that as a merchant means scraping a directory
+ * for deals it does not set. Matched by suffix, so mobile and regional
+ * subdomains are covered too.
+ */
+const DIRECTORY_DOMAINS: readonly string[] = [
+  "yelp.com",
+  "facebook.com",
+  "instagram.com",
+  "tripadvisor.com",
+  "mapquest.com",
+  "yellowpages.com",
+  "foursquare.com",
+  "doordash.com",
+  "ubereats.com",
+  "grubhub.com",
+  "opentable.com",
+  "google.com",
+  "apple.com",
+  "wikipedia.org",
+  "reddit.com",
+  "linkedin.com",
+  "x.com",
+  "twitter.com",
+  "tiktok.com",
+  "youtube.com",
+  "amazon.com",
+  "indeed.com",
+  "glassdoor.com",
+];
+
+/** Whether a resolved domain is a directory listing rather than a merchant. */
+export function isDirectorySite(domain: string): boolean {
+  const host = domain.trim().toLowerCase();
+  return DIRECTORY_DOMAINS.some(
+    (known) => host === known || host.endsWith(`.${known}`),
+  );
+}

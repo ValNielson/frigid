@@ -255,3 +255,43 @@ export const scrapeDeals = action({
     };
   },
 });
+
+/**
+ * Resolves a business name to its real domain.
+ *
+ * Exists because a model asked for domains directly gets them wrong more often
+ * than right: of five it proposed for one city, one was usable — the others
+ * were a dead domain, a business with no deals page, a farmers market, and the
+ * right chain's store in a city 65 miles away. A search returns what is
+ * actually there, so the model only has to know the business exists.
+ */
+export const findSite = action({
+  args: { query: v.string() },
+  returns: v.union(v.string(), v.null()),
+  handler: async (_ctx, args) => {
+    const firecrawl = new Firecrawl({
+      apiKey: requireEnv("FIRECRAWL_API_KEY"),
+    });
+    const results = await firecrawl.search(args.query, { limit: 3 });
+
+    for (const entry of results.web ?? []) {
+      const record = entry as { url?: string; metadata?: { url?: string } };
+      const url = record.url ?? record.metadata?.url;
+      if (url === undefined) continue;
+      const host = normalizeHost(url);
+      if (host !== null) return host;
+    }
+
+    return null;
+  },
+});
+
+/** Bare hostname from a URL, or null when it is not one. */
+function normalizeHost(raw: string): string | null {
+  try {
+    const host = new URL(raw).hostname.toLowerCase().replace(/^www\./, "");
+    return host.includes(".") ? host : null;
+  } catch {
+    return null;
+  }
+}

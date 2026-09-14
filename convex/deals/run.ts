@@ -7,7 +7,9 @@ import type { Id } from "../_generated/dataModel";
 import {
   FIRECRAWL_MAX_AGE_MS,
   MAX_MERCHANTS_PER_RUN,
+  MAX_STORE_PLANS_PER_RUN,
   matchIngredients,
+  matchesMetro,
   splitStores,
 } from "./policy";
 
@@ -69,6 +71,7 @@ export const execute = internalAction({
       scraped: 0,
       couponsFound: 0,
       couponsMatched: 0,
+      offMetroDropped: 0,
     };
     let skipped: string[] = [];
 
@@ -87,23 +90,30 @@ export const execute = internalAction({
       // who checked only national chains in a known city gets here free.
       let planQueries: string[] = [];
       let planDomains: string[] = [];
+      let metro: { city: string; state?: string; zip?: string } | null = null;
 
       if (inputs.location.length > 0) {
-        const place = await ctx.runAction(
-          internal.deals.plan.normalizeLocation,
-          { raw: inputs.location },
-        );
-        if (place !== null) {
+        metro = await ctx.runAction(internal.deals.plan.normalizeLocation, {
+          raw: inputs.location,
+        });
+        if (metro !== null) {
           const plan = await ctx.runAction(
             internal.deals.plan.planForLocation,
-            {
-              city: place.city,
-              state: place.state,
-              vagueStores: vague,
-            },
+            { city: metro.city, state: metro.state },
           );
           planQueries = plan.queries;
           planDomains = plan.targetUrls;
+
+          // Each store the chain map could not answer is resolved and cached
+          // on its own, so one person's write-in no longer decides what
+          // everyone else in the city gets.
+          for (const store of vague.slice(0, MAX_STORE_PLANS_PER_RUN)) {
+            const resolved = await ctx.runAction(
+              internal.deals.plan.planForStore,
+              { city: metro.city, state: metro.state, store },
+            );
+            planDomains = [...planDomains, ...resolved];
+          }
         }
       }
 
@@ -116,6 +126,8 @@ export const execute = internalAction({
       const query =
         planQueries[0] ?? "weekly ad grocery deals this week prices";
 
+      const fromChains = new Set(domains);
+
       for (const domain of targets) {
         const pages = await ctx.runAction(api.firecrawl.searchDeals, {
           query,
@@ -124,13 +136,16 @@ export const execute = internalAction({
           maxAgeMs: FIRECRAWL_MAX_AGE_MS,
         });
 
+        // Only a domain that came from the chain map is claimed as "static".
+        // Plan-derived merchants already have rows carrying their real source,
+        // and upsertMerchant leaves an existing source alone.
         const merchantId = await ctx.runMutation(
           internal.deals.data.upsertMerchant,
           {
             name: domain,
             domain,
             kind: "grocery",
-            source: "static",
+            source: fromChains.has(domain) ? "static" : "codex",
             now,
           },
         );
@@ -140,6 +155,24 @@ export const execute = internalAction({
 
         for (const page of pages) {
           if (page.coupons.length === 0) continue;
+
+          // A merchant a model proposed has to prove it serves this metro. A
+          // chain does not: its ad pages often name no city, and the domain is
+          // already the guarantee. Without this, the right brand's store in
+          // another city yields a current, well-formed page whose prices are
+          // simply wrong for this user.
+          if (!fromChains.has(domain) && metro !== null) {
+            const evidence = [
+              page.url,
+              page.title ?? "",
+              ...page.coupons.map((c: ExtractedCoupon) => c.title),
+              ...page.coupons.map((c: ExtractedCoupon) => c.details ?? ""),
+            ].join(" ");
+            if (!matchesMetro(evidence, metro)) {
+              counts.offMetroDropped += page.coupons.length;
+              continue;
+            }
+          }
           const written = await ctx.runMutation(
             internal.deals.data.upsertCoupons,
             {

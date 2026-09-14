@@ -4,6 +4,8 @@ import { NO_ALLERGIES } from "../onboardingQuestions";
 import {
   MAILABLE_FREQUENCIES,
   MAX_COUPON_POOL,
+  isPlanFresh,
+  storePlanKey,
   MAX_MERCHANTS_READ,
   couponDedupeKey,
   isDigestDue,
@@ -108,6 +110,8 @@ export const merchantsByDomains = internalQuery({
       domain: v.string(),
       dealsUrl: v.optional(v.string()),
       lastScrapedAt: v.optional(v.number()),
+      source: v.string(),
+      city: v.optional(v.string()),
     }),
   ),
   handler: async (ctx, args) => {
@@ -126,6 +130,8 @@ export const merchantsByDomains = internalQuery({
         domain: row.domain,
         dealsUrl: row.dealsUrl,
         lastScrapedAt: row.lastScrapedAt,
+        source: row.source,
+        city: row.city,
       });
     }
     return found;
@@ -320,7 +326,7 @@ export const saveLocation = internalMutation({
 });
 
 export const getPlan = internalQuery({
-  args: { locationKey: v.string() },
+  args: { locationKey: v.string(), now: v.number() },
   returns: v.union(
     v.object({ queries: v.array(v.string()), targetUrls: v.array(v.string()) }),
     v.null(),
@@ -333,6 +339,9 @@ export const getPlan = internalQuery({
       )
       .unique();
     if (row === null) return null;
+    // Expiry is enforced here rather than by a sweeper, so a stale plan simply
+    // reads as absent and the next run replaces it.
+    if (!isPlanFresh(row.createdAt, args.now)) return null;
     return { queries: row.queries, targetUrls: row.targetUrls };
   },
 });
@@ -364,6 +373,7 @@ export const savePlan = internalMutation({
       await ctx.db.patch(existing._id, {
         queries: args.queries,
         targetUrls: args.targetUrls,
+        createdAt: args.now,
       });
     }
     return null;
@@ -385,7 +395,13 @@ export const startRun = internalMutation({
       status: "running",
       trigger: args.trigger,
       startedAt: args.now,
-      counts: { merchants: 0, scraped: 0, couponsFound: 0, couponsMatched: 0 },
+      counts: {
+        merchants: 0,
+        scraped: 0,
+        couponsFound: 0,
+        couponsMatched: 0,
+        offMetroDropped: 0,
+      },
     });
   },
 });
@@ -399,6 +415,7 @@ export const finishRun = internalMutation({
       scraped: v.number(),
       couponsFound: v.number(),
       couponsMatched: v.number(),
+      offMetroDropped: v.optional(v.number()),
     }),
     skippedMerchants: v.optional(v.array(v.string())),
     error: v.optional(v.string()),
@@ -520,5 +537,58 @@ export const runInputs = internalQuery({
       ),
       promptContext: preferences.promptContext,
     };
+  },
+});
+
+/** A write-in store's resolved domains in one city, if still fresh. */
+export const getStorePlan = internalQuery({
+  args: { locationKey: v.string(), store: v.string(), now: v.number() },
+  returns: v.union(v.array(v.string()), v.null()),
+  handler: async (ctx, args) => {
+    const row = await ctx.db
+      .query("storePlans")
+      .withIndex("by_location_store", (q) =>
+        q
+          .eq("locationKey", args.locationKey)
+          .eq("storeKey", storePlanKey(args.store)),
+      )
+      .unique();
+    if (row === null) return null;
+    if (!isPlanFresh(row.createdAt, args.now)) return null;
+    return row.domains;
+  },
+});
+
+export const saveStorePlan = internalMutation({
+  args: {
+    locationKey: v.string(),
+    store: v.string(),
+    domains: v.array(v.string()),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const storeKey = storePlanKey(args.store);
+    const existing = await ctx.db
+      .query("storePlans")
+      .withIndex("by_location_store", (q) =>
+        q.eq("locationKey", args.locationKey).eq("storeKey", storeKey),
+      )
+      .unique();
+
+    if (existing === null) {
+      await ctx.db.insert("storePlans", {
+        locationKey: args.locationKey,
+        storeKey,
+        domains: args.domains,
+        createdAt: args.now,
+      });
+    } else {
+      await ctx.db.patch(existing._id, {
+        domains: args.domains,
+        createdAt: args.now,
+      });
+    }
+    return null;
   },
 });
