@@ -12,20 +12,12 @@ import {
   type Answers,
 } from "@/convex/onboardingQuestions";
 import { useSessionToken } from "@/app/lib/session";
+import { cardClass, primaryButtonClass, secondaryButtonClass } from "@/app/lib/formClasses";
 import { QuestionField } from "./QuestionField";
 import { SummaryReview } from "./SummaryReview";
 
 /** Answers are mirrored here on every change so a refresh mid-quiz costs nothing. */
 const DRAFT_KEY = "frigid.onboardingDraft";
-
-const primaryButtonClass =
-  "rounded-full bg-citrus px-6 py-3 text-base font-semibold text-white transition " +
-  "hover:bg-citrus-strong focus-visible:outline-2 focus-visible:outline-offset-2 " +
-  "focus-visible:outline-citrus disabled:cursor-not-allowed disabled:opacity-60";
-
-const secondaryButtonClass =
-  "rounded-full border border-border-subtle px-6 py-3 text-base font-medium text-muted " +
-  "transition hover:border-frost hover:text-foreground disabled:opacity-60";
 
 function readDraft(): Answers {
   if (typeof window === "undefined") return {};
@@ -119,48 +111,62 @@ export function OnboardingWizard({ initialAnswers }: { initialAnswers?: Answers 
   }
 
   const totalSteps = SECTIONS.length + 1;
-  const progress = Math.round(((step + 1) / totalSteps) * 100);
+  const current = Math.min(step + 1, totalSteps);
 
   return (
-    <div className="w-full max-w-2xl">
-      <div className="mb-8">
-        <div className="flex items-baseline justify-between">
-          <p className="text-xs font-medium uppercase tracking-[0.16em] text-frost">
-            {reviewing ? "Last look" : section}
+    <div className="w-full">
+      {reviewing ? null : (
+        <header className="mb-8 flex flex-col gap-3 text-center">
+          <h1 className="text-3xl font-semibold tracking-[-0.025em] sm:text-[38px]">
+            Tell us how you cook
+          </h1>
+          <p className="mx-auto max-w-[480px] text-[17px] leading-relaxed text-muted">
+            A few questions so every recipe we send actually fits your kitchen,
+            your week, and your table. Skip anything that doesn&rsquo;t apply.
           </p>
-          <p className="text-xs text-muted">
-            Step {Math.min(step + 1, totalSteps)} of {totalSteps}
-          </p>
+        </header>
+      )}
+
+      <div
+        className="flex items-center gap-3.5"
+        role="progressbar"
+        aria-valuenow={current}
+        aria-valuemin={1}
+        aria-valuemax={totalSteps}
+        aria-label="Onboarding progress"
+      >
+        <div className="flex flex-1 gap-[5px]">
+          {Array.from({ length: totalSteps }, (_, i) => (
+            <div
+              key={i}
+              className={`h-1.5 flex-1 rounded-full transition-colors duration-300 ${
+                i < current ? "bg-action" : "bg-plum/12"
+              }`}
+            />
+          ))}
         </div>
-        <div
-          className="mt-3 h-1.5 w-full overflow-hidden rounded-full bg-surface-muted"
-          role="progressbar"
-          aria-valuenow={progress}
-          aria-valuemin={0}
-          aria-valuemax={100}
-          aria-label="Onboarding progress"
-        >
-          <div
-            className="h-full rounded-full bg-frost transition-all duration-300"
-            style={{ width: `${progress}%` }}
-          />
-        </div>
+        <span className="font-mono text-xs text-subtle uppercase">
+          {reviewing ? "Last look" : `Step ${current} / ${totalSteps}`}
+        </span>
       </div>
 
-      <div className="rounded-3xl border border-border-subtle bg-surface p-8 shadow-sm sm:p-10">
+      <div className={`${cardClass} mt-5 sm:p-9`}>
         {reviewing ? (
           <SummaryReview answers={answers} />
         ) : (
-          <div className="space-y-9">
-            {questions.map((question) => (
-              <QuestionField
-                key={question.id}
-                question={question}
-                answer={answers[question.id]}
-                onChange={(next) => setAnswer(question.id, next)}
-              />
-            ))}
-          </div>
+          <>
+            <span className="slab">{section}</span>
+            <div className="mt-6 space-y-8">
+              {questions.map((question) => (
+                <QuestionField
+                  key={question.id}
+                  question={question}
+                  answer={answers[question.id]}
+                  onChange={(next) => setAnswer(question.id, next)}
+                />
+              ))}
+            </div>
+          </>
         )}
 
         {error !== null ? (
@@ -169,27 +175,42 @@ export function OnboardingWizard({ initialAnswers }: { initialAnswers?: Answers 
           </p>
         ) : null}
 
-        <div className="mt-9 flex flex-wrap items-center gap-3">
-          {step > 0 ? (
-            <button type="button" onClick={back} disabled={saving} className={secondaryButtonClass}>
-              Back
-            </button>
-          ) : null}
-
-          {reviewing ? (
-            <button type="button" onClick={finish} disabled={saving} className={primaryButtonClass}>
-              {saving ? "Saving…" : "Looks right — finish"}
-            </button>
-          ) : (
-            <button type="button" onClick={next} className={primaryButtonClass}>
-              Continue
-            </button>
+        <div className="mt-8 flex flex-wrap items-center justify-between gap-3">
+          {reviewing ? null : (
+            <span className="text-sm text-subtle">Your answers save as you go.</span>
           )}
+          <div className="flex flex-wrap items-center gap-3">
+            {step > 0 ? (
+              <button
+                type="button"
+                onClick={back}
+                disabled={saving}
+                className={secondaryButtonClass}
+              >
+                Back
+              </button>
+            ) : null}
+
+            {reviewing ? (
+              <button
+                type="button"
+                onClick={finish}
+                disabled={saving}
+                className={primaryButtonClass}
+              >
+                {saving ? "Saving…" : "Looks right — finish"}
+              </button>
+            ) : (
+              <button type="button" onClick={next} className={primaryButtonClass}>
+                Continue
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
       {reviewing ? (
-        <p className="mt-5 text-center text-sm text-muted">
+        <p className="mt-4 text-center text-sm text-subtle">
           We&rsquo;ll email you a copy. You can change any of this later.
         </p>
       ) : null}

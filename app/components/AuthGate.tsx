@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSessionToken } from "@/app/lib/session";
+import { Spinner } from "./ui";
 
 /**
  * The one place routing decisions live.
@@ -88,13 +89,5 @@ export function AuthGate({
 
 /** Neutral placeholder. Deliberately says nothing about who is signed in. */
 function GateSkeleton() {
-  return (
-    <div className="flex flex-1 items-center justify-center px-6 py-16">
-      <div
-        className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-frost"
-        role="status"
-        aria-label="Loading"
-      />
-    </div>
-  );
+  return <Spinner label="Loading" />;
 }

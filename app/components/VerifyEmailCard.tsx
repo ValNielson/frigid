@@ -5,9 +5,11 @@ import { useRouter } from "next/navigation";
 import { useAction } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { writeSessionToken } from "@/app/lib/session";
-import { inputClass, primaryButtonClass } from "@/app/lib/formClasses";
+import { Feedback, cardClass, inputClass, primaryButtonClass } from "./ui";
 
 type Stage = { name: "email" } | { name: "code"; email: string };
+
+const CODE_LENGTH = 6;
 
 export function VerifyEmailCard() {
   const router = useRouter();
@@ -17,6 +19,7 @@ export function VerifyEmailCard() {
   const [stage, setStage] = useState<Stage>({ name: "email" });
   const [email, setEmail] = useState("");
   const [code, setCode] = useState("");
+  const [codeFocused, setCodeFocused] = useState(true);
   const [pending, setPending] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -94,29 +97,52 @@ export function VerifyEmailCard() {
   if (stage.name === "code") {
     return (
       <Card>
-        <h2 className="text-2xl font-semibold tracking-tight">Check your email</h2>
-        <p className="mt-3 text-muted">
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">Check your email</h2>
+        <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
           We sent a 6-digit code to{" "}
           <span className="font-medium text-foreground">{stage.email}</span>.
         </p>
 
         <form onSubmit={onSubmitCode} className="mt-6 space-y-4">
-          <div>
-            <label htmlFor="code" className="mb-2 block text-sm font-medium">
-              Verification code
-            </label>
+          <label htmlFor="code" className="sr-only">
+            Verification code
+          </label>
+          {/* One real input laid invisibly over six display boxes, so paste,
+              autofill and the one-time-code keyboard all keep working. */}
+          <div className="relative">
+            <div aria-hidden className="flex justify-between gap-2.5">
+              {Array.from({ length: CODE_LENGTH }, (_, i) => {
+                const caret = codeFocused && !pending && i === code.length;
+                return (
+                  <div
+                    key={i}
+                    className={`flex h-[60px] flex-1 items-center justify-center rounded-2xl font-mono text-2xl font-medium ${
+                      caret
+                        ? "border-2 border-action bg-surface"
+                        : "border border-border-subtle bg-background"
+                    }`}
+                  >
+                    {code[i] ?? (caret ? <span className="animate-pulse text-subtle">|</span> : null)}
+                  </div>
+                );
+              })}
+            </div>
             <input
               id="code"
               name="code"
               value={code}
-              onChange={(e) => setCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              onChange={(e) =>
+                setCode(e.target.value.replace(/\D/g, "").slice(0, CODE_LENGTH))
+              }
+              onFocus={() => setCodeFocused(true)}
+              onBlur={() => setCodeFocused(false)}
               inputMode="numeric"
               autoComplete="one-time-code"
-              placeholder="123456"
+              maxLength={CODE_LENGTH}
               required
               disabled={pending}
               autoFocus
-              className={`${inputClass} text-center font-mono text-2xl tracking-[0.4em]`}
+              className="absolute inset-0 h-full w-full cursor-text opacity-0"
             />
           </div>
 
@@ -124,19 +150,19 @@ export function VerifyEmailCard() {
 
           <button
             type="submit"
-            disabled={pending || redirecting || code.length < 6}
-            className={primaryButtonClass}
+            disabled={pending || redirecting || code.length < CODE_LENGTH}
+            className={`${primaryButtonClass} w-full`}
           >
             {redirecting ? "Taking you in…" : pending ? "Checking…" : "Verify email"}
           </button>
         </form>
 
-        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 text-sm">
+        <div className="mt-4 flex flex-wrap items-center justify-between gap-3 text-sm">
           <button
             type="button"
             onClick={() => sendCode(stage.email, true)}
             disabled={pending || redirecting || cooldown > 0}
-            className="font-medium text-frost underline-offset-4 hover:underline disabled:text-muted disabled:no-underline"
+            className="text-action underline-offset-4 hover:underline disabled:text-subtle disabled:no-underline"
           >
             {cooldown > 0 ? `Resend in ${cooldown}s` : "Resend code"}
           </button>
@@ -148,7 +174,7 @@ export function VerifyEmailCard() {
               setError(null);
               setNotice(null);
             }}
-            className="text-muted underline-offset-4 hover:underline"
+            className="text-action underline-offset-4 hover:underline"
           >
             Use a different email
           </button>
@@ -159,39 +185,37 @@ export function VerifyEmailCard() {
 
   return (
     <Card>
-      <h2 className="text-2xl font-semibold tracking-tight">Get on the list</h2>
-      <p className="mt-3 text-muted">
+      <h2 className="text-2xl font-semibold tracking-[-0.02em]">Get on the list</h2>
+      <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
         Drop in your email and we&rsquo;ll send a code to confirm it&rsquo;s really yours.
         No password, no account.
       </p>
 
-      <form onSubmit={onSubmitEmail} className="mt-6 space-y-4">
-        <div>
-          <label htmlFor="email" className="mb-2 block text-sm font-medium">
-            Email address
-          </label>
-          <input
-            id="email"
-            name="email"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
-            autoComplete="email"
-            required
-            disabled={pending}
-            className={inputClass}
-          />
-        </div>
+      <form onSubmit={onSubmitEmail} className="mt-6 flex flex-col gap-3">
+        <label htmlFor="email" className="text-[13px] font-medium">
+          Email address
+        </label>
+        <input
+          id="email"
+          name="email"
+          type="email"
+          value={email}
+          onChange={(e) => setEmail(e.target.value)}
+          placeholder="you@example.com"
+          autoComplete="email"
+          required
+          disabled={pending}
+          className={inputClass}
+        />
 
         <Feedback error={error} notice={notice} />
 
-        <button type="submit" disabled={pending} className={primaryButtonClass}>
+        <button type="submit" disabled={pending} className={`${primaryButtonClass} w-full`}>
           {pending ? "Sending…" : "Send me a code"}
         </button>
       </form>
 
-      <p className="mt-4 text-xs text-muted">
+      <p className="mt-3.5 text-xs text-subtle">
         We only use this to email you about frigid. Unsubscribe any time.
       </p>
     </Card>
@@ -199,22 +223,5 @@ export function VerifyEmailCard() {
 }
 
 function Card({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="w-full max-w-md rounded-3xl border border-border-subtle bg-surface p-8 shadow-sm sm:p-10">
-      {children}
-    </div>
-  );
-}
-
-function Feedback({ error, notice }: { error: string | null; notice: string | null }) {
-  if (error === null && notice === null) return null;
-  return (
-    <p
-      role="status"
-      aria-live="polite"
-      className={`text-sm ${error !== null ? "text-danger" : "text-frost"}`}
-    >
-      {error ?? notice}
-    </p>
-  );
+  return <div className={`w-full max-w-[420px] ${cardClass}`}>{children}</div>;
 }

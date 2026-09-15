@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-14T23:40:43Z
+- **Last updated:** 2026-09-15T00:35:00Z
 
 ## Log
 
@@ -636,3 +636,14 @@ them from then on.
 
 Not yet confirmed against the live extractor: no run has produced a department
 field, only the boolean it replaces. Tests are at 181.
+
+### 2026-09-15 - working tree
+Restyled every screen to the "soft modern" redesign: a near-white ground, mint
+panels, dusty teal accents, deep teal buttons, plum type, and the hand-drawn
+frigid logo (`app/globals.css`, `public/frigid-logo.png`). Added a shared header
+with Kitchen, Ask and Preferences links (`app/components/AppHeader.tsx`). The
+landing page gained a hero and a "how it works" row, the code step shows six
+digit boxes, onboarding has a segmented progress bar, and the home page shows a
+live progress card and the shopping list by department. Dark mode was removed.
+No backend changes. Lint and the `app/` type-check pass; the screens have not
+yet been checked in a browser past the sign-in gate.

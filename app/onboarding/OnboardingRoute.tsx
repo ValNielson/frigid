@@ -3,8 +3,10 @@
 import { useSearchParams } from "next/navigation";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { AppHeader } from "@/app/components/AppHeader";
 import { AuthGate } from "@/app/components/AuthGate";
 import { OnboardingWizard } from "@/app/components/onboarding/OnboardingWizard";
+import { Spinner } from "@/app/components/ui";
 import { useSessionToken } from "@/app/lib/session";
 
 /**
@@ -21,7 +23,11 @@ export function OnboardingRoute() {
   const editing = useSearchParams().get("edit") === "1";
   return (
     <AuthGate require={editing ? "verified-any" : "verified"}>
-      {editing ? <EditExisting /> : <OnboardingWizard />}
+      {/* Only an onboarded editor has anywhere else to go, so only they get nav. */}
+      <AppHeader nav={editing} />
+      <main className="mx-auto w-full max-w-[760px] px-4 pt-10 pb-16 sm:px-8">
+        {editing ? <EditExisting /> : <OnboardingWizard />}
+      </main>
     </AuthGate>
   );
 }
@@ -37,17 +43,7 @@ function EditExisting() {
 
   // Wait for the saved answers before mounting the wizard, so it does not
   // briefly show an empty quiz and overwrite the draft with blanks.
-  if (prefs === undefined) {
-    return (
-      <div className="flex flex-1 items-center justify-center px-6 py-16">
-        <div
-          className="h-8 w-8 animate-spin rounded-full border-2 border-border-subtle border-t-frost"
-          role="status"
-          aria-label="Loading your answers"
-        />
-      </div>
-    );
-  }
+  if (prefs === undefined) return <Spinner label="Loading your answers" />;
 
   return <OnboardingWizard initialAnswers={prefs?.answers ?? {}} />;
 }

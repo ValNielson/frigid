@@ -1,116 +1,92 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useAction, useQuery } from "convex/react";
+import { useState } from "react";
+import Link from "next/link";
+import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
-import { clearSessionToken, useSessionToken } from "@/app/lib/session";
+import { useSessionToken } from "@/app/lib/session";
 import { buildOpening, realAllergies } from "@/convex/onboardingSummary";
-import { RecipeSearchCard } from "@/app/components/RecipeSearchCard";
+import { AppHeader } from "./AppHeader";
+import { RecipeSearchCard } from "./RecipeSearchCard";
+import { AllergyNotice, linkClass, panelClass } from "./ui";
 
-const cardClass =
-  "rounded-3xl border border-border-subtle bg-surface p-7 shadow-sm";
+function greeting(): string {
+  const hour = new Date().getHours();
+  if (hour < 12) return "Morning";
+  if (hour < 17) return "Afternoon";
+  return "Evening";
+}
 
 export function HomeScreen() {
-  const router = useRouter();
   const session = useSessionToken();
-  const signOut = useAction(api.verification.signOut);
-
-  const token = session.status === "ready" ? (session.token ?? undefined) : undefined;
-  const args = session.status === "ready" ? { sessionToken: token } : "skip";
-
-  const me = useQuery(api.me.me, args);
+  const args =
+    session.status === "ready" ? { sessionToken: session.token ?? undefined } : "skip";
   const prefs = useQuery(api.preferences.getMine, args);
-
-  async function onSignOut() {
-    const current = session.status === "ready" ? session.token : null;
-    // Clear locally first: even if the revoke call fails, this device is out.
-    clearSessionToken();
-    if (current !== null) {
-      try {
-        await signOut({ sessionToken: current });
-      } catch {
-        // The token still expires on its own.
-      }
-    }
-    router.replace("/");
-  }
+  // Fixed at mount: a greeting that flips mid-visit reads as a glitch.
+  const [hello] = useState(greeting);
 
   const allergies = prefs ? realAllergies(prefs.answers) : [];
   const opening = prefs ? buildOpening(prefs.answers) : "";
 
   return (
-    <div className="relative flex flex-1 flex-col px-6 py-14">
-      <div
-        aria-hidden
-        className="pointer-events-none absolute -top-40 left-1/2 h-[32rem] w-[32rem] -translate-x-1/2 rounded-full bg-frost/20 blur-3xl"
-      />
+    <div className="flex flex-1 flex-col">
+      <AppHeader />
 
-      <main className="relative mx-auto w-full max-w-2xl">
-        <header className="flex flex-wrap items-start justify-between gap-4">
-          <div>
-            <p className="text-xs font-medium uppercase tracking-[0.28em] text-frost">
-              frigid
-            </p>
-            <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
-              You&rsquo;re all set
+      <main className="relative flex-1">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 top-0 h-80 bg-gradient-to-b from-mint to-transparent"
+        />
+
+        <div className="relative mx-auto flex w-full max-w-[860px] flex-col gap-10 px-4 pt-10 pb-14 sm:px-10">
+          <section className="flex flex-col gap-4">
+            <h1 className="text-3xl font-semibold tracking-[-0.025em] sm:text-[34px]">
+              {hello}. What are we cooking?
             </h1>
-            {me !== undefined && me !== null ? (
-              <p className="mt-2 text-sm text-muted">{me.email}</p>
-            ) : null}
-          </div>
-          <button
-            type="button"
-            onClick={onSignOut}
-            className="text-sm text-muted underline-offset-4 transition hover:text-foreground hover:underline"
-          >
-            Sign out
-          </button>
-        </header>
+            <RecipeSearchCard />
+          </section>
 
-        <div className={`${cardClass} mt-9`}>
-          <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-frost">
-            Your taste profile
-          </h2>
-          {prefs === undefined ? (
-            <p className="mt-4 text-muted">Loading…</p>
-          ) : prefs === null ? (
-            <p className="mt-4 text-muted">We don&rsquo;t have your answers yet.</p>
-          ) : (
-            <>
-              <p className="mt-4 leading-relaxed">{opening}</p>
-              {allergies.length > 0 ? (
-                <p className="mt-4 rounded-xl border border-danger/30 bg-danger/5 px-4 py-3 text-sm text-danger">
-                  <span className="font-semibold">Allergies:</span>{" "}
-                  {allergies.join(", ")} — treated as a hard rule.
+          <div className="grid gap-8 md:grid-cols-[1.6fr_1fr]">
+            <section className="flex flex-col gap-3">
+              <div className="flex items-baseline justify-between gap-4">
+                <h2 className="slab">Your taste profile</h2>
+                <Link href="/onboarding?edit=1" className={`${linkClass} text-sm`}>
+                  Update my answers
+                </Link>
+              </div>
+              {prefs === undefined ? (
+                <p className="text-muted">Loading…</p>
+              ) : prefs === null ? (
+                <p className="text-muted">We don&rsquo;t have your answers yet.</p>
+              ) : (
+                <>
+                  <p className="text-base leading-relaxed">{opening}</p>
+                  {allergies.length > 0 ? (
+                    <AllergyNotice title={`Allergies: ${allergies.join(", ")}.`}>
+                      Treated as a hard rule, never a preference.
+                    </AllergyNotice>
+                  ) : null}
+                </>
+              )}
+            </section>
+
+            {/* Still honest about what is not built. Saying so beats a dashboard of
+                buttons that do nothing. */}
+            <section className="flex flex-col gap-3">
+              <h2 className="slab">This week&rsquo;s picks</h2>
+              <div className={panelClass}>
+                <p className="font-medium">Coming next</p>
+                <p className="mt-1.5 text-sm leading-relaxed text-muted">
+                  Seasonal ideas from the stores you shop, on the schedule you chose.
                 </p>
-              ) : null}
-              <a
-                href="/onboarding?edit=1"
-                className="mt-6 inline-block text-sm font-medium text-frost underline-offset-4 hover:underline"
-              >
-                Update my answers
-              </a>
-            </>
-          )}
-        </div>
+              </div>
+            </section>
+          </div>
 
-        <div className="mt-6">
-          <RecipeSearchCard />
-        </div>
-
-        {/* Still honest about what is not built. Saying so beats a dashboard of
-            buttons that do nothing. */}
-        <div className={`${cardClass} mt-6`}>
-          <h3 className="font-medium">Your weekly picks</h3>
-          <p className="mt-2 text-sm leading-relaxed text-muted">
-            Seasonal ideas from the stores you shop, on the schedule you chose.
-            Coming next.
+          <p className="text-center text-xs text-subtle">
+            Every email we send has a one-click unsubscribe link.
           </p>
         </div>
-
-        <p className="mt-8 text-center text-xs text-muted">
-          Every email we send has a one-click unsubscribe link.
-        </p>
       </main>
     </div>
   );

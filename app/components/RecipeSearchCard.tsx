@@ -5,7 +5,7 @@ import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@/convex/_generated/api";
 import { useSessionToken } from "@/app/lib/session";
-import { cardClass, inputClass, primaryButtonClass } from "@/app/lib/formClasses";
+import { panelClass } from "@/app/lib/formClasses";
 
 /** The pipeline's steps, in order, for the progress list. */
 const STEPS = [
@@ -26,6 +26,13 @@ const ORDER = [
   "done",
 ];
 
+/** One-tap starters that fill the composer rather than sending on their own. */
+const STARTERS = [
+  { label: "Use what's in my fridge", prompt: "something with chicken thighs, rice, and a lemon" },
+  { label: "Plan five dinners", prompt: "five weeknight dinners for two" },
+  { label: "Something quick", prompt: "a vegetarian dinner in under 30 minutes" },
+];
+
 export function RecipeSearchCard() {
   const session = useSessionToken();
   const start = useMutation(api.recipeJobs.start);
@@ -44,6 +51,8 @@ export function RecipeSearchCard() {
     !job.stalled &&
     ORDER.includes(job.status) &&
     job.status !== "done";
+
+  const busy = pending || running;
 
   async function onSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -66,42 +75,55 @@ export function RecipeSearchCard() {
   }
 
   return (
-    <div className={cardClass}>
-      <h2 className="text-xs font-medium uppercase tracking-[0.16em] text-frost">
-        What can I make tonight?
-      </h2>
-      <p className="mt-3 text-sm leading-relaxed text-muted">
-        Tell us what you feel like. We&rsquo;ll search real recipes that fit your
-        profile, work out what you need to buy, and email you the results.
-      </p>
-
-      <form onSubmit={onSubmit} className="mt-5 space-y-3">
-        <label htmlFor="recipe-prompt" className="sr-only">
-          What do you want to cook?
-        </label>
-        <input
-          id="recipe-prompt"
-          type="text"
-          value={prompt}
-          onChange={(event) => setPrompt(event.target.value)}
-          placeholder="something warm with chicken"
-          maxLength={280}
-          disabled={pending || running}
-          className={inputClass}
-        />
-        {error !== null ? (
-          <p role="status" aria-live="polite" className="text-sm text-danger">
-            {error}
-          </p>
-        ) : null}
-        <button
-          type="submit"
-          disabled={pending || running || prompt.trim().length < 3}
-          className={primaryButtonClass}
+    <div className="flex flex-col gap-8">
+      <div className="flex flex-col gap-3">
+        <form
+          onSubmit={onSubmit}
+          className="flex flex-col gap-3.5 rounded-[22px] bg-surface px-5 py-[18px] shadow-[0_8px_26px_rgba(85,67,72,0.09)] transition focus-within:shadow-[0_8px_26px_rgba(85,67,72,0.09),0_0_0_3px_var(--mint)]"
         >
-          {pending ? "Starting…" : running ? "Searching…" : "Find me recipes"}
-        </button>
-      </form>
+          <label htmlFor="recipe-prompt" className="sr-only">
+            What do you want to cook?
+          </label>
+          <input
+            id="recipe-prompt"
+            type="text"
+            value={prompt}
+            onChange={(event) => setPrompt(event.target.value)}
+            placeholder="something warm with chicken…"
+            maxLength={280}
+            disabled={busy}
+            className="w-full bg-transparent text-lg text-foreground outline-none placeholder:text-subtle disabled:opacity-60"
+          />
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex flex-wrap gap-2">
+              {STARTERS.map((starter) => (
+                <button
+                  key={starter.label}
+                  type="button"
+                  disabled={busy}
+                  onClick={() => setPrompt(starter.prompt)}
+                  className="rounded-full bg-surface-muted px-3.5 py-1.5 text-sm transition hover:bg-mint disabled:opacity-50"
+                >
+                  {starter.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="submit"
+              disabled={busy || prompt.trim().length < 3}
+              aria-label={pending ? "Starting" : running ? "Searching" : "Find me recipes"}
+              className="flex h-11 w-11 flex-none items-center justify-center rounded-full bg-action text-lg text-white transition hover:bg-plum focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {busy ? "…" : "↑"}
+            </button>
+          </div>
+        </form>
+
+        <p role="status" aria-live="polite" className={`text-center text-[13px] ${error !== null ? "text-danger" : "text-muted"}`}>
+          {error ??
+            "We'll search real recipes that fit your profile, work out what to buy, and email you the results."}
+        </p>
+      </div>
 
       {job !== undefined && job !== null ? <JobPanel job={job} /> : null}
     </div>
@@ -113,20 +135,20 @@ type Job = NonNullable<FunctionReturnType<typeof api.recipeJobs.latest>>;
 function JobPanel({ job }: { job: Job }) {
   if (job.status === "failed") {
     return (
-      <Panel>
-        <p role="status" aria-live="polite" className="text-sm text-danger">
+      <div className="rounded-[20px] border border-danger/30 bg-surface px-6 py-5">
+        <p role="status" aria-live="polite" className="text-[15px] text-danger">
           {job.error ?? "That search didn't work out."}
         </p>
         {job.skipped.length > 0 ? (
           <ul className="mt-3 space-y-1">
             {job.skipped.map((entry) => (
-              <li key={entry.url} className="text-xs text-muted">
+              <li key={entry.url} className="text-sm text-muted">
                 {entry.reason} &mdash;{" "}
                 <a
                   href={entry.url}
                   target="_blank"
                   rel="noreferrer"
-                  className="text-frost underline-offset-4 hover:underline"
+                  className="text-action underline-offset-4 hover:underline"
                 >
                   {hostOf(entry.url)}
                 </a>
@@ -134,11 +156,11 @@ function JobPanel({ job }: { job: Job }) {
             ))}
           </ul>
         ) : null}
-        <p className="mt-3 text-xs text-muted">
+        <p className="mt-3 text-sm text-muted">
           Try again whenever &mdash; recipes we have already read are cached, so
           another search costs nothing extra.
         </p>
-      </Panel>
+      </div>
     );
   }
 
@@ -146,101 +168,109 @@ function JobPanel({ job }: { job: Job }) {
   // failed, so say so plainly instead of spinning forever.
   if (job.stalled) {
     return (
-      <Panel>
-        <p role="status" aria-live="polite" className="text-sm text-danger">
+      <div className="rounded-[20px] border border-danger/30 bg-surface px-6 py-5">
+        <p role="status" aria-live="polite" className="text-[15px] text-danger">
           This search stopped responding. Start another one when you&rsquo;re ready.
         </p>
-      </Panel>
+      </div>
     );
   }
 
   if (job.status !== "done") {
     const current = ORDER.indexOf(job.status);
+    const activeIndex = STEPS.findIndex((step) => step.status === job.status);
     return (
-      <Panel>
-        <p className="text-xs uppercase tracking-[0.16em] text-frost">
-          Searching for &ldquo;{job.prompt}&rdquo;
-        </p>
-        <ol className="mt-3 space-y-2" aria-live="polite">
-          {STEPS.map((step) => {
-            const at = ORDER.indexOf(step.status);
-            const done = current > at;
-            const active = job.status === step.status;
-            return (
-              <li
-                key={step.status}
-                className={`flex items-center gap-2 text-sm ${
-                  done ? "text-muted" : active ? "text-foreground" : "text-muted/60"
-                }`}
-              >
-                <span aria-hidden className="w-4 text-center">
-                  {done ? "✓" : active ? "→" : "·"}
-                </span>
-                <span>{step.label}</span>
-              </li>
-            );
-          })}
-        </ol>
-        {job.statusDetail !== undefined ? (
-          <p className="mt-3 text-xs text-muted">{job.statusDetail}</p>
-        ) : null}
-      </Panel>
+      <div className="flex items-start gap-5 rounded-[20px] border border-teal bg-surface px-[22px] py-5">
+        <div aria-hidden className="animate-pulse-ring h-11 w-11 flex-none rounded-full bg-teal" />
+        <div className="flex min-w-0 flex-1 flex-col gap-3">
+          <div className="flex flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
+            <span className="text-lg font-medium">{job.prompt}</span>
+            <span className="text-sm text-muted">
+              {activeIndex === -1
+                ? "Queued"
+                : `${STEPS[activeIndex].label} · ${activeIndex + 1} of ${STEPS.length}`}
+            </span>
+          </div>
+          <div className="flex gap-1.5" aria-hidden>
+            {STEPS.map((step) => {
+              const at = ORDER.indexOf(step.status);
+              return (
+                <div
+                  key={step.status}
+                  className={`h-[7px] flex-1 rounded-full ${
+                    current > at
+                      ? "bg-action"
+                      : job.status === step.status
+                        ? "animate-shimmer"
+                        : "bg-track"
+                  }`}
+                />
+              );
+            })}
+          </div>
+          <ol className="flex flex-wrap gap-x-6 gap-y-1 text-sm text-muted" aria-live="polite">
+            {STEPS.map((step) => {
+              const at = ORDER.indexOf(step.status);
+              const done = current > at;
+              const active = job.status === step.status;
+              return (
+                <li
+                  key={step.status}
+                  className={done || active ? "text-foreground" : undefined}
+                >
+                  <span className={active ? "font-medium" : undefined}>
+                    {done ? "✓ " : active ? "→ " : ""}
+                    {step.label}
+                  </span>
+                </li>
+              );
+            })}
+          </ol>
+          <p className="text-sm text-muted">
+            {job.statusDetail ??
+              "We'll email you the moment it's done. You can close this."}
+          </p>
+        </div>
+      </div>
     );
   }
 
+  const hasList = job.shopping.length > 0;
+
   return (
-    <Panel>
-      <p className="text-xs uppercase tracking-[0.16em] text-frost">
-        {job.recipes.length} {job.recipes.length === 1 ? "recipe" : "recipes"} for
-        &ldquo;{job.prompt}&rdquo;
-      </p>
+    <section className="flex flex-col gap-5">
+      <div>
+        <h2 className="text-2xl font-semibold tracking-[-0.02em]">
+          {job.recipes.length} {job.recipes.length === 1 ? "recipe" : "recipes"} for
+          &ldquo;{job.prompt}&rdquo;
+        </h2>
+        <p className="mt-1.5 text-[15px] text-muted">
+          {hasList
+            ? `${job.shopping.length} things to buy, already combined across every recipe. `
+            : ""}
+          {job.emailed
+            ? "We emailed this to you too."
+            : "You're unsubscribed, so this is on screen only."}
+        </p>
+      </div>
 
-      <ul className="mt-3 space-y-3">
-        {job.recipes.map((recipe) => (
-          <li key={recipe.url}>
-            <a
-              href={recipe.url}
-              target="_blank"
-              rel="noreferrer"
-              className="text-sm font-medium text-foreground underline-offset-4 hover:underline"
-            >
-              {recipe.name}
-            </a>
-            <p className="mt-0.5 text-xs text-muted">
-              {[
-                recipe.totalTimeMinutes !== undefined
-                  ? formatTime(recipe.totalTimeMinutes)
-                  : null,
-                recipe.servings !== undefined ? `serves ${recipe.servings}` : null,
-                `${recipe.ingredients.length} ingredients`,
-              ]
-                .filter((bit): bit is string => bit !== null)
-                .join(" · ")}
-            </p>
-          </li>
-        ))}
-      </ul>
-
-      {job.shopping.length > 0 ? (
-        <div className="mt-6">
-          <h3 className="text-xs uppercase tracking-[0.16em] text-frost">
-            What to shop for
-          </h3>
-          <p className="mt-1 text-xs text-muted">
-            {job.shopping.length} things, already combined across every recipe.
-          </p>
-          <div className="mt-3 space-y-4">
+      <div className={`grid gap-7 ${hasList ? "lg:grid-cols-[1.3fr_1fr]" : ""}`}>
+        {hasList ? (
+          <div className="flex flex-col gap-5">
             {groupByDepartment(job.shopping).map((group) => (
               <div key={group.department}>
-                <p className="text-xs font-medium text-muted">{group.department}</p>
-                <ul className="mt-1 space-y-1">
+                <h3 className="slab">{group.department}</h3>
+                <ul className="mt-2">
                   {group.items.map((item) => {
                     const store = storeNote(item);
                     return (
-                      <li key={item.item} className="text-sm">
-                        <span className="capitalize">{item.item}</span>
+                      <li
+                        key={item.item}
+                        className="border-b border-border-subtle/70 py-2.5"
+                      >
+                        <span className="text-base capitalize">{item.item}</span>
                         {item.usedIn.length > 1 ? (
-                          <span className="text-xs text-muted">
+                          <span className="text-[13px] text-muted">
                             {" "}
                             · in {item.usedIn.length} recipes
                           </span>
@@ -255,53 +285,81 @@ function JobPanel({ job }: { job: Job }) {
               </div>
             ))}
           </div>
+        ) : null}
+
+        <div className="flex flex-col gap-3.5">
+          <div className={panelClass}>
+            <h3 className="slab">Recipes in this list</h3>
+            <ul className="mt-3 flex flex-col gap-3">
+              {job.recipes.map((recipe) => (
+                <li key={recipe.url}>
+                  <a
+                    href={recipe.url}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="text-[15px] leading-snug font-medium underline-offset-4 hover:text-action hover:underline"
+                  >
+                    {recipe.name}
+                  </a>
+                  <p className="text-[13px] text-muted">
+                    {[
+                      recipe.totalTimeMinutes !== undefined
+                        ? formatTime(recipe.totalTimeMinutes)
+                        : null,
+                      recipe.servings !== undefined ? `serves ${recipe.servings}` : null,
+                      `${recipe.ingredients.length} ingredients`,
+                    ]
+                      .filter((bit): bit is string => bit !== null)
+                      .join(" · ")}
+                  </p>
+                </li>
+              ))}
+            </ul>
+          </div>
+
+          {job.deals.length > 0 ? (
+            <div className={panelClass}>
+              <h3 className="slab">On sale for this list</h3>
+              <ul className="mt-3 flex flex-col gap-2.5">
+                {job.deals.map((deal) => (
+                  <li key={`${deal.title}-${deal.merchantName ?? ""}`} className="text-[15px]">
+                    <span>{deal.title}</span>
+                    {deal.discount !== undefined ? (
+                      <span className="ml-2 rounded-full bg-mint px-2.5 py-0.5 text-[13px] font-medium text-action">
+                        {deal.discount}
+                      </span>
+                    ) : null}
+                    {deal.merchantName !== undefined ? (
+                      <span className="text-[13px] text-muted"> at {deal.merchantName}</span>
+                    ) : null}
+                    {deal.code !== undefined ? (
+                      <span className="block font-mono text-xs text-muted">
+                        Code {deal.code}
+                      </span>
+                    ) : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ) : null}
+
+          {/* An allergen drop is something the user deserves to be told about
+              rather than a silent gap in the results. */}
+          {job.skipped.length > 0 ? (
+            <div className="rounded-[18px] bg-plum p-5 text-white">
+              <span className="font-mono text-[11px] font-medium tracking-[0.14em] text-mint uppercase">
+                Set aside
+              </span>
+              <p className="mt-2.5 text-sm leading-relaxed">
+                We set aside {job.skipped.length}{" "}
+                {job.skipped.length === 1 ? "recipe" : "recipes"}:{" "}
+                {job.skipped.map((entry) => entry.reason.toLowerCase()).join(", ")}.
+              </p>
+            </div>
+          ) : null}
         </div>
-      ) : null}
-
-      {job.deals.length > 0 ? (
-        <div className="mt-6">
-          <h3 className="text-xs uppercase tracking-[0.16em] text-frost">
-            On sale for this list
-          </h3>
-          <ul className="mt-2 space-y-2">
-            {job.deals.map((deal) => (
-              <li key={`${deal.title}-${deal.merchantName ?? ""}`} className="text-sm">
-                <span>{deal.title}</span>
-                {deal.discount !== undefined ? (
-                  <span className="ml-2 rounded-full bg-frost-soft px-2 py-0.5 text-xs font-medium">
-                    {deal.discount}
-                  </span>
-                ) : null}
-                {deal.merchantName !== undefined ? (
-                  <span className="text-xs text-muted"> at {deal.merchantName}</span>
-                ) : null}
-                {deal.code !== undefined ? (
-                  <span className="block font-mono text-xs text-muted">
-                    Code {deal.code}
-                  </span>
-                ) : null}
-              </li>
-            ))}
-          </ul>
-        </div>
-      ) : null}
-
-      {/* An allergen drop is something the user deserves to be told about
-          rather than a silent gap in the results. */}
-      {job.skipped.length > 0 ? (
-        <p className="mt-5 text-xs text-muted">
-          We set aside {job.skipped.length}{" "}
-          {job.skipped.length === 1 ? "recipe" : "recipes"}:{" "}
-          {job.skipped.map((entry) => entry.reason.toLowerCase()).join(", ")}.
-        </p>
-      ) : null}
-
-      <p className="mt-5 text-xs text-muted">
-        {job.emailed
-          ? "We emailed this to you too."
-          : "You're unsubscribed, so this is on screen only."}
-      </p>
-    </Panel>
+      </div>
+    </section>
   );
 }
 
@@ -314,13 +372,13 @@ function StoreLink({
 }) {
   if (store.productUrl !== undefined && store.productTitle !== undefined) {
     return (
-      <span className="block text-xs text-muted">
+      <span className="mt-0.5 block text-[13px] text-muted">
         {store.storeLabel}:{" "}
         <a
           href={store.productUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-frost underline-offset-4 hover:underline"
+          className="text-action underline-offset-4 hover:underline"
         >
           {store.productTitle}
         </a>
@@ -329,27 +387,19 @@ function StoreLink({
   }
   if (store.searchUrl !== undefined) {
     return (
-      <span className="block text-xs text-muted">
+      <span className="mt-0.5 block text-[13px] text-muted">
         <a
           href={store.searchUrl}
           target="_blank"
           rel="noreferrer"
-          className="text-frost underline-offset-4 hover:underline"
+          className="text-action underline-offset-4 hover:underline"
         >
           Find {item} at {store.storeLabel}
         </a>
       </span>
     );
   }
-  return <span className="block text-xs text-muted">Try {store.storeLabel}</span>;
-}
-
-function Panel({ children }: { children: React.ReactNode }) {
-  return (
-    <div className="mt-6 rounded-2xl border border-border-subtle bg-surface-muted p-5">
-      {children}
-    </div>
-  );
+  return <span className="mt-0.5 block text-[13px] text-muted">Try {store.storeLabel}</span>;
 }
 
 /** Bare host, so a skipped recipe is identifiable without a wall of URL. */

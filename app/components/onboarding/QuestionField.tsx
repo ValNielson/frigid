@@ -6,17 +6,14 @@ import {
   type Answer,
   type Question,
 } from "@/convex/onboardingQuestions";
+import { inputClass } from "@/app/lib/formClasses";
 
 const chipBase =
-  "rounded-full border px-4 py-2 text-sm transition cursor-pointer " +
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-frost";
-const chipOn = "border-frost bg-frost-soft font-medium text-foreground";
-const chipOff = "border-border-subtle bg-surface-muted text-muted hover:border-frost/50";
-
-const textClass =
-  "w-full rounded-xl border border-border-subtle bg-surface-muted px-4 py-3 text-base " +
-  "text-foreground outline-none transition placeholder:text-muted/70 " +
-  "focus:border-frost focus:ring-2 focus:ring-frost/30";
+  "cursor-pointer rounded-full border px-[18px] py-2.5 text-[15px] transition " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action";
+const chipOn = "border-action bg-mint font-medium text-foreground";
+const chipOff =
+  "border-border-subtle bg-background text-muted hover:border-action/50 hover:text-foreground";
 
 const EMPTY: Answer = { choices: [] };
 
@@ -64,16 +61,16 @@ export function QuestionField({
 
   return (
     <fieldset className="border-0 p-0">
-      <legend className="text-lg font-medium tracking-tight">
+      <legend className="text-[21px] font-medium tracking-[-0.01em]">
         {question.prompt}
         {question.required === true ? (
-          <span className="ml-1 text-danger" aria-hidden>
+          <span className="ml-1 text-action" aria-hidden>
             *
           </span>
         ) : null}
       </legend>
       {question.help !== undefined ? (
-        <p className="mt-2 text-sm leading-relaxed text-muted">{question.help}</p>
+        <p className="mt-1.5 text-[15px] leading-relaxed text-muted">{question.help}</p>
       ) : null}
 
       {question.kind === "text" ? (
@@ -85,11 +82,11 @@ export function QuestionField({
           rows={3}
           maxLength={MAX_TEXT_LENGTH}
           placeholder={question.id === "location" ? "Grand Rapids, MI" : "Anything at all"}
-          className={`${textClass} mt-4 resize-y`}
+          className={`${inputClass} mt-4 resize-y`}
         />
       ) : (
         <>
-          <div className="mt-4 flex flex-wrap gap-2">
+          <div className="mt-4 flex flex-wrap gap-[9px]">
             {(question.options ?? []).map((option) => {
               const on = current.choices.includes(option);
               return (
@@ -117,7 +114,7 @@ export function QuestionField({
               maxLength={MAX_TEXT_LENGTH}
               placeholder="Something else? Type it here"
               aria-label={`${question.prompt} — something else`}
-              className={`${textClass} mt-3`}
+              className={`${inputClass} mt-3`}
             />
           ) : null}
         </>

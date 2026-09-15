@@ -1,48 +1,35 @@
 @import "tailwindcss";
 
-/* frigid: a cold, clean fridge interior with warm food accents.
-   Frost blues carry the surfaces; citrus carries the call to action. */
+/* frigid: soft and modern. A near-white ground with mint panels, dusty teal for
+   surfaces and accents, deep teal for actions, and plum for type. */
 :root {
-  --background: #eef5fa;
+  --background: #fafbfb;
   --surface: #ffffff;
-  --surface-muted: #f4f8fb;
-  --border-subtle: #dbe7ef;
-  --foreground: #0f1b24;
-  --muted: #5d7c8f;
-  --frost: #2f8fbf;
-  --frost-soft: #cfe6f3;
-  --citrus: #ef7c2f;
-  --citrus-strong: #d96a20;
-  --danger: #b93d29;
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #08131a;
-    --surface: #0f2029;
-    --surface-muted: #0c1a22;
-    --border-subtle: #1d3945;
-    --foreground: #e6f2f8;
-    --muted: #9fbccb;
-    --frost: #58b6e0;
-    --frost-soft: #16323f;
-    --citrus: #f4914b;
-    --citrus-strong: #ef7c2f;
-    --danger: #f08a76;
-  }
+  --surface-muted: #f1f5f6;
+  --track: #edf1f2;
+  --border-subtle: rgba(85, 67, 72, 0.14);
+  --foreground: #554348;
+  --muted: #747578;
+  --subtle: #8c9a9e;
+  --teal: #93b7be;
+  --mint: #d4f5f5;
+  --action: #46747e;
+  --danger: #b3452f;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-surface: var(--surface);
   --color-surface-muted: var(--surface-muted);
+  --color-track: var(--track);
   --color-border-subtle: var(--border-subtle);
   --color-foreground: var(--foreground);
   --color-muted: var(--muted);
-  --color-frost: var(--frost);
-  --color-frost-soft: var(--frost-soft);
-  --color-citrus: var(--citrus);
-  --color-citrus-strong: var(--citrus-strong);
+  --color-subtle: var(--subtle);
+  --color-teal: var(--teal);
+  --color-mint: var(--mint);
+  --color-action: var(--action);
+  --color-plum: var(--foreground);
   --color-danger: var(--danger);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
@@ -55,26 +42,29 @@ body {
   font-family: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
 }
 
-/* Ambient field behind the prompt console: a faint rule grid that dissolves
-   toward the edges, so the surface reads as instrument panel rather than page. */
-.grid-field {
-  background-image:
-    linear-gradient(to right, var(--border-subtle) 1px, transparent 1px),
-    linear-gradient(to bottom, var(--border-subtle) 1px, transparent 1px);
-  background-size: 56px 56px;
-  mask-image: radial-gradient(ellipse 70% 60% at 50% 0%, #000 20%, transparent 100%);
+/* Mono section label: "WHERE YOU SHOP", "EARLIER ASKS". */
+.slab {
+  font: 500 11px/1 var(--font-geist-mono), ui-monospace, monospace;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--muted);
 }
 
-@keyframes drift {
+/* The mint wash that sits behind the top of most screens. */
+.mint-wash {
+  background: linear-gradient(180deg, var(--mint) 0%, var(--background) 78%);
+}
+
+@keyframes pulse-ring {
   from {
-    transform: translate3d(-50%, 0, 0) scale(1);
+    box-shadow: 0 0 0 0 rgba(147, 183, 190, 0.55);
   }
   to {
-    transform: translate3d(-50%, 2.5rem, 0) scale(1.12);
+    box-shadow: 0 0 0 14px rgba(147, 183, 190, 0);
   }
 }
 
-@keyframes sheen {
+@keyframes shimmer {
   from {
     background-position: 0% 50%;
   }
@@ -83,36 +73,19 @@ body {
   }
 }
 
-@keyframes orb {
-  from {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--frost) 35%, transparent);
-  }
-  to {
-    box-shadow: 0 0 0 0.6rem transparent;
-  }
+.animate-pulse-ring {
+  animation: pulse-ring 2.6s ease-out infinite;
 }
 
-.animate-drift {
-  animation: drift 18s ease-in-out infinite alternate;
-}
-
-.animate-drift-slow {
-  animation: drift 26s ease-in-out infinite alternate-reverse;
-}
-
-.animate-sheen {
-  animation: sheen 6s linear infinite;
-}
-
-.animate-orb {
-  animation: orb 2.8s ease-out infinite;
+.animate-shimmer {
+  background: linear-gradient(100deg, var(--teal), var(--mint), var(--teal));
+  background-size: 200% 100%;
+  animation: shimmer 3.4s linear infinite;
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .animate-drift,
-  .animate-drift-slow,
-  .animate-sheen,
-  .animate-orb {
+  .animate-pulse-ring,
+  .animate-shimmer {
     animation: none;
   }
 }

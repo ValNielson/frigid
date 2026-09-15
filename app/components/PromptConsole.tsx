@@ -26,15 +26,14 @@ const EXAMPLES = [
 const MAX_COMPOSER_HEIGHT = 240;
 
 const sendButtonClass =
-  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-citrus text-xl " +
-  "font-semibold text-white transition hover:bg-citrus-strong " +
-  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-citrus " +
-  "disabled:cursor-not-allowed disabled:opacity-60";
+  "flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-action text-lg " +
+  "text-white transition hover:bg-plum " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action " +
+  "disabled:cursor-not-allowed disabled:opacity-50";
 
 const chipClass =
-  "rounded-2xl border border-border-subtle bg-surface-muted px-4 py-3 text-left transition " +
-  "hover:border-frost hover:bg-surface focus-visible:outline-2 focus-visible:outline-offset-2 " +
-  "focus-visible:outline-frost";
+  "rounded-full bg-surface-muted px-3.5 py-1.5 text-sm transition hover:bg-mint " +
+  "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-action";
 
 export function PromptConsole() {
   const [prompt, setPrompt] = useState("");
@@ -95,128 +94,99 @@ export function PromptConsole() {
   }
 
   return (
-    <section className="relative w-full">
-      <div className="flex items-start gap-3">
-        <div
-          aria-hidden
-          className="animate-orb flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-frost-soft text-base ring-1 ring-frost/30"
-        >
-          ❄
-        </div>
-        <div className="rounded-2xl rounded-tl-md border border-border-subtle bg-surface-muted px-4 py-3 text-sm leading-relaxed">
-          Ask me one thing about food &mdash; a recipe, a shopping list, a
-          coupon worth using. I&rsquo;ll go work on it and email the answer back
-          to you.
-        </div>
-      </div>
-
-      <div className="mt-8">
-        <h2 className="text-xs font-medium uppercase tracking-[0.28em] text-frost">
-          Try one of these
-        </h2>
-        <div className="mt-3 grid gap-3 sm:grid-cols-3">
-          {EXAMPLES.map((example) => (
-            <button
-              key={example.category}
-              type="button"
-              onClick={() => applyExample(example.prompt)}
-              className={chipClass}
-            >
-              <span className="block text-sm font-medium">
-                {example.category}
-              </span>
-              <span className="mt-1 block text-sm leading-snug text-muted">
-                {example.prompt}
-              </span>
-            </button>
-          ))}
-        </div>
-      </div>
-
+    <section className="flex w-full flex-col gap-3">
       <form
         onSubmit={(event) => {
           event.preventDefault();
           submit();
         }}
-        className="animate-sheen mt-8 rounded-[1.75rem] bg-[linear-gradient(120deg,var(--frost),var(--citrus),var(--frost))] bg-[length:200%_100%] p-px"
+        className="flex flex-col gap-3.5 rounded-[22px] bg-surface px-5 py-[18px] shadow-[0_8px_26px_rgba(85,67,72,0.09)] transition focus-within:shadow-[0_8px_26px_rgba(85,67,72,0.09),0_0_0_3px_var(--mint)]"
       >
-        <div className="rounded-[calc(1.75rem-1px)] bg-surface p-4 transition focus-within:shadow-[0_0_0_4px_var(--frost-soft)]">
-          <label htmlFor="prompt" className="sr-only">
-            Your question for frigid
-          </label>
-          <textarea
-            id="prompt"
-            name="prompt"
-            ref={composerRef}
-            value={prompt}
-            onChange={(event) => {
-              setPrompt(event.target.value);
-              resize(event.target);
-            }}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submit();
-              }
-            }}
-            rows={3}
-            placeholder="Ask frigid anything about food…"
-            className="w-full resize-none bg-transparent px-1 text-base leading-relaxed text-foreground outline-none placeholder:text-muted/70"
-          />
+        <label htmlFor="prompt" className="sr-only">
+          Your question for frigid
+        </label>
+        <textarea
+          id="prompt"
+          name="prompt"
+          ref={composerRef}
+          value={prompt}
+          onChange={(event) => {
+            setPrompt(event.target.value);
+            resize(event.target);
+          }}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" && !event.shiftKey) {
+              event.preventDefault();
+              submit();
+            }
+          }}
+          rows={3}
+          placeholder="Ask frigid anything about food…"
+          className="w-full resize-none bg-transparent text-lg leading-relaxed text-foreground outline-none placeholder:text-subtle"
+        />
 
-          <div className="mt-2 flex items-end justify-between gap-4">
-            <p className="font-mono text-xs text-muted">
-              ↵ to send &middot; ⇧↵ for a new line
-            </p>
-            <button
-              type="submit"
-              ref={sendRef}
-              disabled={prompt.trim() === "" || sending}
-              aria-label={sending ? "Sending prompt" : "Send prompt"}
-              className={sendButtonClass}
-            >
-              {sending ? "…" : "↑"}
-            </button>
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-2">
+            {EXAMPLES.map((example) => (
+              <button
+                key={example.category}
+                type="button"
+                title={example.prompt}
+                onClick={() => applyExample(example.prompt)}
+                className={chipClass}
+              >
+                {example.category}
+              </button>
+            ))}
           </div>
+          <button
+            type="submit"
+            ref={sendRef}
+            disabled={prompt.trim() === "" || sending}
+            aria-label={sending ? "Sending prompt" : "Send prompt"}
+            className={sendButtonClass}
+          >
+            {sending ? "…" : "↑"}
+          </button>
         </div>
       </form>
 
       <p
         role="status"
         aria-live="polite"
-        className="mt-4 text-center text-xs text-muted"
+        className={`text-center text-[13px] ${error !== null ? "text-danger" : "text-muted"}`}
       >
         {error ??
           "One question per send. Answers arrive by email, not on this screen."}
+      </p>
+      <p className="text-center font-mono text-xs text-subtle">
+        ↵ to send &middot; ⇧↵ for a new line
       </p>
 
       <dialog
         ref={dialogRef}
         aria-labelledby="sent-heading"
         onClose={reset}
-        className="m-auto w-[calc(100%-3rem)] max-w-md bg-transparent p-0 text-foreground backdrop:bg-background/70 backdrop:backdrop-blur-sm"
+        className="m-auto w-[calc(100%-2rem)] max-w-[420px] bg-transparent p-0 text-foreground backdrop:bg-plum/45"
       >
-        <div className={`${cardClass} text-center`}>
+        <div className={`${cardClass} text-center shadow-[0_18px_40px_rgba(85,67,72,0.2)]`}>
           <div
             aria-hidden
-            className="mx-auto mb-5 flex h-12 w-12 items-center justify-center rounded-full bg-frost-soft text-2xl"
+            className="mx-auto mb-[18px] flex h-14 w-14 items-center justify-center rounded-full bg-mint text-2xl text-action"
           >
             ✓
           </div>
-          <h2
-            id="sent-heading"
-            className="text-2xl font-semibold tracking-tight"
-          >
+          <h2 id="sent-heading" className="text-2xl font-semibold tracking-[-0.02em]">
             Your results are on the way
           </h2>
-          <p className="mt-3 text-muted">
+          <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
             Results will be sent to your email &mdash; we&rsquo;ll send them
             over as soon as they&rsquo;re ready.
           </p>
           <button
             type="button"
             onClick={() => dialogRef.current?.close()}
-            className={`${primaryButtonClass} mt-7`}
+            className={`${primaryButtonClass} mt-6 w-full`}
           >
             Got it
           </button>
