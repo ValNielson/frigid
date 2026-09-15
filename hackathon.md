@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-15T00:35:00Z
+- **Last updated:** 2026-09-15T00:37:31Z
 
 ## Log
 
@@ -637,7 +637,7 @@ them from then on.
 Not yet confirmed against the live extractor: no run has produced a department
 field, only the boolean it replaces. Tests are at 181.
 
-### 2026-09-15 - working tree
+### 2026-09-15 - 06a7851
 Restyled every screen to the "soft modern" redesign: a near-white ground, mint
 panels, dusty teal accents, deep teal buttons, plum type, and the hand-drawn
 frigid logo (`app/globals.css`, `public/frigid-logo.png`). Added a shared header
