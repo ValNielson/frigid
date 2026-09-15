@@ -13,7 +13,7 @@ import schema from "../convex/schema";
 import { api, internal } from "../convex/_generated/api";
 import { hashSessionToken } from "../convex/hash";
 import { MANUAL_RUN_COOLDOWN_MS } from "../convex/deals/policy";
-import { DAILY_CREDIT_BUDGET } from "../convex/recipePolicy";
+import { DAILY_CREDIT_BUDGET, DEAL_STALL_AFTER_MS } from "../convex/recipePolicy";
 
 const modules = import.meta.glob("../convex/**/*.ts");
 const PEPPER = "test-pepper";
@@ -331,4 +331,134 @@ test("an expired coupon is not offered", async () => {
     now,
   });
   expect(pool).toEqual([]);
+});
+
+/**
+ * A crashed chain leaves the row in "running" with nothing to say so — there is
+ * no watchdog cron. Derived at read time from the heartbeat's clock, the same
+ * way a recipe job surfaces the identical failure.
+ */
+test("a run whose clock has stopped reads as stalled", async () => {
+  const t = harness();
+  const userId = await signIn(t);
+  const now = Date.now();
+
+  const runId = await t.run(async (ctx) =>
+    ctx.db.insert("runs", {
+      userId,
+      kind: "deals",
+      status: "running",
+      statusDetail: "Checking meijer.com (2 of 5)",
+      trigger: "prompt",
+      startedAt: now - DEAL_STALL_AFTER_MS - 60_000,
+      updatedAt: now - DEAL_STALL_AFTER_MS - 60_000,
+      counts: {
+        merchants: 0,
+        scraped: 0,
+        couponsFound: 0,
+        couponsMatched: 0,
+        offMetroDropped: 0,
+        merchantsFresh: 0,
+      },
+    }),
+  );
+
+  expect(await t.query(api.deals.latestRun, { sessionToken: TOKEN })).toMatchObject({
+    status: "running",
+    stalled: true,
+    statusDetail: "Checking meijer.com (2 of 5)",
+    trigger: "prompt",
+  });
+
+  // A step reporting in clears it: the run was slow, not dead.
+  await t.run(async (ctx) => ctx.db.patch(runId, { updatedAt: Date.now() }));
+  expect(await t.query(api.deals.latestRun, { sessionToken: TOKEN })).toMatchObject({
+    stalled: false,
+  });
+});
+
+/**
+ * Rows written before the heartbeat reached this table carry no clock at all.
+ * Measuring those against zero would report every one of them as stalled.
+ */
+test("a run with no clock is measured from when it started", async () => {
+  const t = harness();
+  const userId = await signIn(t);
+
+  await t.run(async (ctx) =>
+    ctx.db.insert("runs", {
+      userId,
+      kind: "deals",
+      status: "running",
+      trigger: "cron",
+      startedAt: Date.now(),
+      counts: {
+        merchants: 0,
+        scraped: 0,
+        couponsFound: 0,
+        couponsMatched: 0,
+        offMetroDropped: 0,
+        merchantsFresh: 0,
+      },
+    }),
+  );
+
+  expect(await t.query(api.deals.latestRun, { sessionToken: TOKEN })).toMatchObject({
+    stalled: false,
+  });
+});
+
+/**
+ * The extractor started naming what an offer is actually for, and the selector's
+ * validator did not follow. Convex refuses unknown fields at the argument
+ * boundary, so every run died at the final step — after all the scraping was
+ * paid for. The field has to survive the call, not be stripped before it:
+ * matchIngredients and keepAsFood both read it.
+ */
+test("the selector accepts a coupon that names its primary item", async () => {
+  const t = harness();
+  const userId = await signIn(t);
+  const now = Date.now();
+
+  const merchantId = await t.run(async (ctx) =>
+    ctx.db.insert("merchants", {
+      name: "meijer.com",
+      domain: "meijer.com",
+      kind: "grocery",
+      source: "static",
+      discoveredAt: now,
+    }),
+  );
+  await t.run(async (ctx) => {
+    await ctx.db.insert("coupons", {
+      userId: null,
+      merchantId,
+      title: "peanut butter, 2 for $5",
+      primaryItem: "peanut butter",
+      itemTerms: ["peanut butter"],
+      tags: [],
+      sourceKind: "scrape",
+      metroKey: "cleveland, oh",
+      dedupeKey: "cleveland, oh|meijer.com|peanut butter|",
+      foundAt: now,
+    });
+  });
+
+  // Straight from the reader into the selector, which is the pair that broke.
+  const pool = await t.query(internal.deals.data.couponsForUser, {
+    userId,
+    merchantIds: [merchantId],
+    metroKey: "cleveland, oh",
+    now,
+  });
+  expect(pool[0]?.primaryItem).toBe("peanut butter");
+
+  const result = await t.action(internal.deals.match.selectForProfile, {
+    coupons: pool,
+    // Excluded before any model call, which is what keeps this test offline.
+    allergies: ["Peanuts"],
+    promptContext: "cooks for two",
+  });
+
+  expect(result).toEqual({ picks: [], excludedForAllergies: 1 });
 });

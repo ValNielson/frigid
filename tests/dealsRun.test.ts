@@ -228,7 +228,7 @@ test("each merchant step moves the waiting job's clock", async () => {
   expect(after?.status).toBe("dealing");
 });
 
-test("a run with no waiting job heartbeats nothing", async () => {
+test("a run with no waiting job touches no job row", async () => {
   const t = harness();
   const { runId, userId } = await seedRun(t);
   const jobId = await seedWaitingJob(t, userId, 60_000);
@@ -242,4 +242,27 @@ test("a run with no waiting job heartbeats nothing", async () => {
 
   const job = await t.run(async (ctx) => ctx.db.get(jobId));
   expect(job?.statusDetail).toBe("Checking what is on sale near you");
+});
+
+/**
+ * The same run still has to report somewhere. Reporting only to a recipe job is
+ * why a prompt run looked stalled from the outside for its whole length: there
+ * was no job, so every heartbeat was a no-op and the row never moved.
+ */
+test("a run with no waiting job still reports its own progress", async () => {
+  const t = harness();
+  const { runId, userId } = await seedRun(t);
+
+  await t.action(internal.deals.run.scrapeMerchant, {
+    state: stateFor(runId, userId, ["meijer.com"]),
+    index: 0,
+    attempt: 1,
+  });
+
+  const run = await t.run(async (ctx) => ctx.db.get(runId));
+  expect(run?.statusDetail).toContain("meijer.com");
+  expect(run?.statusDetail).toContain("1 of 1");
+  expect(Date.now() - (run?.updatedAt ?? 0)).toBeLessThan(DEAL_STALL_AFTER_MS);
+  // Progress must not move the run out of the step it is in.
+  expect(run?.status).toBe("running");
 });

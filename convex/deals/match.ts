@@ -48,6 +48,7 @@ const candidate = v.object({
   details: v.optional(v.string()),
   code: v.optional(v.string()),
   discount: v.optional(v.string()),
+  primaryItem: v.optional(v.string()),
   itemTerms: v.array(v.string()),
   tags: v.array(v.string()),
   expiresAt: v.optional(v.number()),

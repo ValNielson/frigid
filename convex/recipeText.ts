@@ -102,14 +102,20 @@ export function normalizeQuery(query: string): string {
  * Stripping non-alphanumerics does double duty: it tidies the query and it
  * means a user cannot inject `site:` or other operators through the free-text
  * box and steer our search budget somewhere we did not choose.
+ *
+ * Stopwords go before the cap, not after. Capping the raw words counted "give
+ * me some ... to help me use up my" against the limit and dropped the word the
+ * whole request was about: "give me some recipes to help me use up my tomatoes"
+ * searched for weeknight roundups, because the eleventh word was the only one
+ * that named a food. Politeness should not cost a user their subject.
  */
 export function buildSearchQuery(prompt: string, answers: Answers): string {
   const cleaned = decodeEntities(prompt)
     .toLowerCase()
     .replace(/[^a-z0-9\s]/g, " ")
     .split(/\s+/)
-    .filter((word) => word.length > 0)
-    .slice(0, 10)
+    .filter((word) => word.length > 0 && !STOPWORDS.has(word))
+    .slice(0, 20)
     .join(" ");
 
   const parts = [cleaned];

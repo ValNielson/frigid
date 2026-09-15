@@ -144,6 +144,25 @@ test("the search query always asks for a recipe, without saying it twice", () =>
   assert.equal(buildSearchQuery("chicken recipe", {}).match(/\brecipe\b/g)?.length, 1);
 });
 
+/**
+ * A politely phrased request spends its first ten words on filler. Capping
+ * before stripping them dropped the one word that named a food, and the search
+ * went looking for weeknight roundups instead.
+ */
+test("a polite prompt keeps the food it asked about", () => {
+  const query = buildSearchQuery(
+    "Give me some recipes to help me use up my tomatoes",
+    {},
+  );
+  assert.match(query, /\btomatoes\b/);
+  assert.doesNotMatch(query, /\bgive\b/);
+});
+
+test("the search query is still bounded for a rambling prompt", () => {
+  const rambling = Array.from({ length: 40 }, (_, i) => `word${i}`).join(" ");
+  assert.equal(buildSearchQuery(rambling, {}).split(" ").length, 21);
+});
+
 test("candidate scoring prefers prompt matches and penalises roundups", () => {
   const base = { url: "https://food.com/a", title: "Garlic Butter Chicken", description: "" };
   const roundup = { url: "https://food.com/b", title: "25 best chicken recipes", description: "" };

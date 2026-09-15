@@ -184,7 +184,7 @@ export const execute = internalAction({
       // Planning a city nobody has asked about is several model calls and
       // several site lookups, all of them paced. That is the longest stretch
       // where nothing else would touch the job.
-      await heartbeat(ctx, args.recipeJobId, "Finding stores near you");
+      await heartbeat(ctx, args.runId, args.recipeJobId, "Finding stores near you");
 
       // The planner is consulted only for what the chain map cannot answer: a
       // city we have never resolved, or a store named as a category. Someone
@@ -258,6 +258,7 @@ export const execute = internalAction({
 
       await heartbeat(
         ctx,
+        args.runId,
         args.recipeJobId,
         `Checking ${state.targets.length} ${state.targets.length === 1 ? "store" : "stores"} near you`,
       );
@@ -313,6 +314,7 @@ export const scrapeMerchant = internalAction({
 
     await heartbeat(
       ctx,
+      state.runId,
       state.recipeJobId,
       `Checking ${domain} (${args.index + 1} of ${state.targets.length})`,
     );
@@ -445,6 +447,7 @@ export const scrapeMerchant = internalAction({
       if (message.includes(RATE_LIMIT_SKIPPED) && args.attempt < MAX_MERCHANT_ATTEMPTS) {
         await heartbeat(
           ctx,
+          state.runId,
           state.recipeJobId,
           `Waiting to check ${domain} (${args.index + 1} of ${state.targets.length})`,
         );
@@ -473,7 +476,12 @@ export const finalize = internalAction({
 
     try {
       // Matching is a model call, so this step is not instant either.
-      await heartbeat(ctx, state.recipeJobId, "Picking the deals worth sending");
+      await heartbeat(
+        ctx,
+        state.runId,
+        state.recipeJobId,
+        "Picking the deals worth sending",
+      );
 
       const inputs = await ctx.runQuery(internal.deals.data.runInputs, {
         userId: state.userId,
@@ -588,22 +596,33 @@ export const finalize = internalAction({
 });
 
 /**
- * Keeps a waiting recipe job's clock moving, and says where the run is.
+ * Keeps the clocks moving, and says where the run is.
  *
  * The chain is deliberately slow: one merchant per step, paced by the shared
- * request limiter, and nothing else touches the job row while it runs. Without
+ * request limiter, and nothing else touches these rows while it runs. Without
  * this a perfectly healthy run outlives DEAL_STALL_AFTER_MS and the screen tells
  * the user it stopped responding — which a live San Diego run did for half an
  * hour while it was working.
  *
  * The detail text is the point as much as the timestamp. "Checking kroger.com
  * (2 of 5)" is a truer progress line than a static "checking what is on sale".
+ *
+ * The run row is always written; the recipe job only when one is waiting. A run
+ * started from the prompt or the cron has no job, and reporting its progress
+ * against a row that does not exist is why those runs looked stalled from the
+ * outside while they were working.
  */
 async function heartbeat(
   ctx: GenericActionCtx<DataModel>,
+  runId: Id<"runs">,
   recipeJobId: Id<"recipeJobs"> | undefined,
   detail: string,
 ): Promise<void> {
+  await ctx.runMutation(internal.deals.data.markRunStatus, {
+    runId,
+    statusDetail: detail,
+    now: Date.now(),
+  });
   if (recipeJobId === undefined) return;
   await ctx.runMutation(internal.recipeJobs.markStatus, {
     jobId: recipeJobId,

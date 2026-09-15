@@ -7,8 +7,9 @@ import { api } from "@/convex/_generated/api";
 import { useSessionToken } from "@/app/lib/session";
 import { buildOpening, realAllergies } from "@/convex/onboardingSummary";
 import { AppHeader } from "./AppHeader";
+import { DealsRunCard } from "./DealsRunCard";
 import { RecipeSearchCard } from "./RecipeSearchCard";
-import { AllergyNotice, linkClass, panelClass } from "./ui";
+import { AllergyNotice, linkClass } from "./ui";
 
 function greeting(): string {
   const hour = new Date().getHours();
@@ -70,16 +71,11 @@ export function HomeScreen() {
               )}
             </section>
 
-            {/* Still honest about what is not built. Saying so beats a dashboard of
-                buttons that do nothing. */}
+            {/* Falls back to the old "coming next" copy until there is a run to
+                report, which keeps it honest on a brand new account. */}
             <section className="flex flex-col gap-3">
               <h2 className="slab">This week&rsquo;s picks</h2>
-              <div className={panelClass}>
-                <p className="font-medium">Coming next</p>
-                <p className="mt-1.5 text-sm leading-relaxed text-muted">
-                  Seasonal ideas from the stores you shop, on the schedule you chose.
-                </p>
-              </div>
+              <DealsRunCard compact />
             </section>
           </div>
 

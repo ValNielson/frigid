@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { mutation, query } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { userForToken } from "./sessions";
+import { DEAL_STALL_AFTER_MS } from "./recipePolicy";
 
 /**
  * The public surface for coupon discovery.
@@ -66,13 +67,25 @@ export const requestRun = mutation({
   },
 });
 
-/** The most recent run, so the console can show what happened. */
+/**
+ * The most recent run, so the screens can show what happened.
+ *
+ * Not filtered by trigger: a cron digest and a prompt are the same work on the
+ * same profile, and hiding the one the user did not personally start would show
+ * them "nothing yet" while a run was going. `trigger` is returned so the screen
+ * can word it honestly instead.
+ */
 export const latestRun = query({
   args: { sessionToken: v.optional(v.string()) },
   returns: v.union(
     v.null(),
     v.object({
       status: v.string(),
+      statusDetail: v.optional(v.string()),
+      /** Derived, not stored: a step that died leaves the row untouched. */
+      stalled: v.boolean(),
+      kind: v.string(),
+      trigger: v.string(),
       startedAt: v.number(),
       finishedAt: v.optional(v.number()),
       couponsMatched: v.number(),
@@ -92,6 +105,14 @@ export const latestRun = query({
 
     return {
       status: run.status,
+      statusDetail: run.statusDetail,
+      // Falls back to the start time for rows written before the heartbeat
+      // reached this table, and for the window before the first step reports.
+      stalled:
+        run.status === "running" &&
+        Date.now() - (run.updatedAt ?? run.startedAt) > DEAL_STALL_AFTER_MS,
+      kind: run.kind,
+      trigger: run.trigger,
       startedAt: run.startedAt,
       finishedAt: run.finishedAt,
       couponsMatched: run.counts.couponsMatched,

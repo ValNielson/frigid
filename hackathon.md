@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-15T00:37:31Z
+- **Last updated:** 2026-09-15T15:31:04Z
 
 ## Log
 
@@ -647,3 +647,41 @@ digit boxes, onboarding has a segmented progress bar, and the home page shows a
 live progress card and the shopping list by department. Dark mode was removed.
 No backend changes. Lint and the `app/` type-check pass; the screens have not
 yet been checked in a browser past the sign-in gate.
+
+### 2026-09-15 - working tree
+Fixed the bug that was killing every coupon run, and gave runs a screen to fail
+on. The selector's argument validator listed every coupon field except
+`primaryItem` (`convex/deals/match.ts`), which the extractor had started setting
+and which all 104 stored coupons carry — so Convex refused the call at the
+argument boundary and every run died at the final step, after all the scraping
+was paid for. One had pulled 74 coupons from three merchants before throwing.
+The field is added rather than stripped because `matchIngredients` and
+`keepAsFood` both read it (`convex/deals/policy.ts`).
+
+The reason it read as stagnation rather than failure: nothing showed either. A
+run row was written exactly twice, at insert and at the end, and the heartbeat
+that reports progress wrote only to a recipe job — which a run started from the
+prompt or the cron does not have, so all six calls were no-ops. Runs now carry
+`statusDetail` and `updatedAt`, the heartbeat writes the run row whether or not
+a recipe job is waiting, and `latestRun` derives `stalled` from that clock the
+way recipe jobs already do, falling back to the start time for rows written
+before the field existed (`convex/schema.ts`, `convex/deals/run.ts`,
+`convex/deals/data.ts`, `convex/deals.ts`).
+
+`latestRun` had been exported since the pipeline landed with no callers at all.
+A shared `DealsRunCard` now reads it on both screens: full width on the ask
+screen, replacing a modal that said "your results are on the way" whatever
+happened, and compact in the home page's "this week's picks" slot, which keeps
+its honest "coming next" copy until there is a run to report. Zero matches
+renders as a real answer rather than a failure, because it is one. Built from
+the tokens the redesign already ships; one indeterminate progress bar rather
+than the recipe card's segmented one, since a run is however many stores its
+city turns out to have.
+
+Verified: 185 tests pass, up from 181 — the four new ones cover the validator
+against a real stored coupon, a run reporting its own progress with no recipe
+job, and the stall derivation including the missing-clock fallback. The selector
+was called against the live deployment with real coupons and returned picks with
+reasons, which is the exact call that had been throwing. Not confirmed: no full
+prompt-to-email run has gone green, because the day's Firecrawl budget was
+already spent and the attempt was refused before it started.

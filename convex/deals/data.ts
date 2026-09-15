@@ -517,6 +517,7 @@ export const startRun = internalMutation({
       status: "running",
       trigger: args.trigger,
       startedAt: args.now,
+      updatedAt: args.now,
       counts: {
         merchants: 0,
         scraped: 0,
@@ -554,7 +555,32 @@ export const finishRun = internalMutation({
       counts: args.counts,
       skippedMerchants: args.skippedMerchants,
       error: args.error,
+      updatedAt: args.now,
       finishedAt: args.now,
+    });
+    return null;
+  },
+});
+
+/**
+ * Says where a running chain has got to, without moving it out of its step.
+ *
+ * Deliberately cannot write `status`: the only writers of that are startRun and
+ * finishRun, and a progress note that could knock a run into another state would
+ * be a second source of truth for the same field. The timestamp is half the
+ * point — it is what latestRun measures a stall against.
+ */
+export const markRunStatus = internalMutation({
+  args: {
+    runId: v.id("runs"),
+    statusDetail: v.string(),
+    now: v.number(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    await ctx.db.patch(args.runId, {
+      statusDetail: args.statusDetail,
+      updatedAt: args.now,
     });
     return null;
   },

@@ -200,8 +200,16 @@ export default defineSchema({
     userId: v.id("users"),
     kind: v.string(),
     status: v.string(),
+    // Where the run has got to, in the words the screen shows: "Checking
+    // kroger.com (2 of 5)". Optional because rows written before the heartbeat
+    // reached this table have none.
+    statusDetail: v.optional(v.string()),
     trigger: v.string(),
     startedAt: v.number(),
+    // Touched at every step. A run with no movement for a while is reported as
+    // stalled, which is how a crashed chain surfaces without a watchdog cron.
+    // Optional for the same reason as statusDetail.
+    updatedAt: v.optional(v.number()),
     finishedAt: v.optional(v.number()),
     counts: v.object({
       merchants: v.number(),

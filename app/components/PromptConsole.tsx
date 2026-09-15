@@ -4,7 +4,7 @@ import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { useSessionToken } from "@/app/lib/session";
-import { cardClass, primaryButtonClass } from "./ui";
+import { DealsRunCard, isRunning, useLatestRun } from "./DealsRunCard";
 
 const EXAMPLES = [
   {
@@ -41,9 +41,10 @@ export function PromptConsole() {
   const [error, setError] = useState<string | null>(null);
   const composerRef = useRef<HTMLTextAreaElement>(null);
   const sendRef = useRef<HTMLButtonElement>(null);
-  const dialogRef = useRef<HTMLDialogElement>(null);
   const session = useSessionToken();
   const requestRun = useMutation(api.deals.requestRun);
+  const run = useLatestRun();
+  const busy = sending || isRunning(run);
 
   function resize(element: HTMLTextAreaElement) {
     element.style.height = "auto";
@@ -60,7 +61,7 @@ export function PromptConsole() {
 
   async function submit() {
     const text = prompt.trim();
-    if (text === "" || sending) return;
+    if (text === "" || busy) return;
     if (session.status !== "ready" || session.token === null) {
       setError("Please verify your email again.");
       return;
@@ -77,7 +78,7 @@ export function PromptConsole() {
         setError(result.error ?? "Something went wrong. Try again.");
         return;
       }
-      dialogRef.current?.showModal();
+      reset();
     } catch {
       setError("We could not reach frigid. Check your connection and retry.");
     } finally {
@@ -142,11 +143,11 @@ export function PromptConsole() {
           <button
             type="submit"
             ref={sendRef}
-            disabled={prompt.trim() === "" || sending}
-            aria-label={sending ? "Sending prompt" : "Send prompt"}
+            disabled={prompt.trim() === "" || busy}
+            aria-label={busy ? "Sending prompt" : "Send prompt"}
             className={sendButtonClass}
           >
-            {sending ? "…" : "↑"}
+            {busy ? "…" : "↑"}
           </button>
         </div>
       </form>
@@ -156,42 +157,13 @@ export function PromptConsole() {
         aria-live="polite"
         className={`text-center text-[13px] ${error !== null ? "text-danger" : "text-muted"}`}
       >
-        {error ??
-          "One question per send. Answers arrive by email, not on this screen."}
+        {error ?? "One question per send. The answer also arrives by email."}
       </p>
       <p className="text-center font-mono text-xs text-subtle">
         ↵ to send &middot; ⇧↵ for a new line
       </p>
 
-      <dialog
-        ref={dialogRef}
-        aria-labelledby="sent-heading"
-        onClose={reset}
-        className="m-auto w-[calc(100%-2rem)] max-w-[420px] bg-transparent p-0 text-foreground backdrop:bg-plum/45"
-      >
-        <div className={`${cardClass} text-center shadow-[0_18px_40px_rgba(85,67,72,0.2)]`}>
-          <div
-            aria-hidden
-            className="mx-auto mb-[18px] flex h-14 w-14 items-center justify-center rounded-full bg-mint text-2xl text-action"
-          >
-            ✓
-          </div>
-          <h2 id="sent-heading" className="text-2xl font-semibold tracking-[-0.02em]">
-            Your results are on the way
-          </h2>
-          <p className="mt-2.5 text-[15px] leading-relaxed text-muted">
-            Results will be sent to your email &mdash; we&rsquo;ll send them
-            over as soon as they&rsquo;re ready.
-          </p>
-          <button
-            type="button"
-            onClick={() => dialogRef.current?.close()}
-            className={`${primaryButtonClass} mt-6 w-full`}
-          >
-            Got it
-          </button>
-        </div>
-      </dialog>
+      <DealsRunCard />
     </section>
   );
 }
