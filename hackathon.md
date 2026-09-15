@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-15T15:31:04Z
+- **Last updated:** 2026-09-15T19:04:16Z
 
 ## Log
 
@@ -648,7 +648,7 @@ live progress card and the shopping list by department. Dark mode was removed.
 No backend changes. Lint and the `app/` type-check pass; the screens have not
 yet been checked in a browser past the sign-in gate.
 
-### 2026-09-15 - working tree
+### 2026-09-15 - e50ccd5
 Fixed the bug that was killing every coupon run, and gave runs a screen to fail
 on. The selector's argument validator listed every coupon field except
 `primaryItem` (`convex/deals/match.ts`), which the extractor had started setting
@@ -682,6 +682,31 @@ Verified: 185 tests pass, up from 181 — the four new ones cover the validator
 against a real stored coupon, a run reporting its own progress with no recipe
 job, and the stall derivation including the missing-clock fallback. The selector
 was called against the live deployment with real coupons and returned picks with
-reasons, which is the exact call that had been throwing. Not confirmed: no full
-prompt-to-email run has gone green, because the day's Firecrawl budget was
-already spent and the attempt was refused before it started.
+reasons, which is the exact call that had been throwing.
+
+The same commit fixes why a politely worded request found the wrong food. The
+search query kept the first ten words of the prompt and stripped stopwords only
+later, so "give me some recipes to help me use up my tomatoes" spent its whole
+allowance on filler and dropped the eleventh word — the only one naming a food.
+A profile term was then appended where the subject had been, and the search went
+out as "...use up my easy", returning weeknight roundups. Stopwords now go
+before the cap and the cap is twenty, reusing the stopword set already in the
+file (`convex/recipeText.ts`). Tests are at 187.
+
+A full run then went green end to end: that prompt returned four recipes and a
+fifteen-item shopping list, and the email was sent. Two things the run exposed.
+No deals were attached, because the city's stored coupons had nothing for a
+tomato list — which means the selector fix above is still proven only by direct
+call and by test, not by a complete run. And the roundup filter caught none of
+the seven roundups the first search returned: it anchors "-recipes" and
+"-ideas" at the end of a path, so "/40-easy-dinner-recipes-for-busy-weeknights/"
+and "/gallery/easy-vacation-meals" both passed, costing five credits to scrape
+pages with no ingredient list (`convex/recipeCatalog.ts`).
+
+The sharpest thing found today is unfixed. Convex actions run at most once, and
+a step that dies transiently — a restart, a deploy, a dropped connection — leaves
+its job in an active status with nothing to clear it. That happened to a live
+job here. Every active status blocks the one-at-a-time guard, so the user is
+locked out of searching again, permanently: the stalled flag is derived at read
+time for display and no cron reaps the row. Recovery took invoking the step by
+hand.
