@@ -451,11 +451,11 @@ export const savePlan = internalMutation({
 /**
  * Whether this person may start a run right now, and why not.
  *
- * One query rather than a helper per caller: the two public mutations and the
- * recipe pipeline's deals step all have to agree, and they previously did not —
- * requestRun enforced the cooldown, findForIngredients enforced nothing. A
- * query rather than a plain function so an action can read it too, which is
- * what the recipe step needs.
+ * One query rather than a helper per caller, from when there were several and
+ * they disagreed — one entry point enforced the cooldown and another enforced
+ * nothing. The recipe pipeline's deals step is the only caller left, but the
+ * shape still earns its keep: a query rather than a plain function is what lets
+ * that step read it from inside an action.
  */
 export const runBlocked = internalQuery({
   args: { userId: v.id("users"), now: v.number() },

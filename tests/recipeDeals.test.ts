@@ -135,7 +135,7 @@ async function seed(
 const jobRow = (t: T, jobId: Id<"recipeJobs">) =>
   t.run(async (ctx) => ctx.db.get(jobId));
 
-test("a warm pool attaches matching deals and never starts a run", async () => {
+test("a warm pool attaches matching deals without waiting on a scrape", async () => {
   const t = harness();
   const { jobId } = await seed(t, {
     coupons: ["Boneless chicken breast 2 for $9", "Fresh celery bunch 99c", "Laundry soap $4"],
@@ -147,8 +147,48 @@ test("a warm pool attaches matching deals and never starts a run", async () => {
   const titles = (job?.deals ?? []).map((deal) => deal.title);
   expect(titles.some((title) => title.includes("chicken"))).toBe(true);
   expect(titles.some((title) => title.includes("celery"))).toBe(true);
-  // The pool is warm, so nothing was scraped.
-  expect(await t.run(async (ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+  // Matched from coupons already held, so the job never entered the deals step.
+  expect(job?.status).not.toBe("dealing");
+});
+
+/**
+ * The pool being warm says the answer was cheap, not that it was good. A live
+ * Cleveland search matched none of nineteen ingredients against sixty-five held
+ * coupons — correct, and a disappointing inbox — so the search now runs behind
+ * the recipe email rather than being skipped.
+ */
+test("a warm pool still starts a search once the recipes are away", async () => {
+  const t = harness();
+  const { jobId } = await seed(t, { coupons: ["Boneless chicken breast 2 for $9"] });
+
+  await t.action(internal.recipeRun.attachDeals, { jobId });
+
+  const runs = await t.run(async (ctx) => ctx.db.query("runs").collect());
+  expect(runs).toHaveLength(1);
+  expect(runs[0]?.trigger).toBe("recipe-after");
+  // Profile-wide, not narrowed to the list that just came back empty.
+  expect(runs[0]?.kind).toBe("deals");
+});
+
+test("the follow-up search is refused when the guard says no", async () => {
+  const t = harness();
+  const { userId, jobId } = await seed(t, {
+    coupons: ["Boneless chicken breast 2 for $9"],
+  });
+
+  // A run already inside the cooldown is exactly what the guard exists to stop.
+  await t.mutation(internal.deals.data.startRun, {
+    userId,
+    kind: "deals",
+    trigger: "cron",
+    now: Date.now(),
+  });
+
+  await t.action(internal.recipeRun.attachDeals, { jobId });
+
+  const runs = await t.run(async (ctx) => ctx.db.query("runs").collect());
+  expect(runs).toHaveLength(1);
+  expect(runs[0]?.trigger).toBe("cron");
 });
 
 test("a deal is labelled with the store it came from", async () => {
