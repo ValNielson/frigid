@@ -648,7 +648,7 @@ live progress card and the shopping list by department. Dark mode was removed.
 No backend changes. Lint and the `app/` type-check pass; the screens have not
 yet been checked in a browser past the sign-in gate.
 
-### 2026-09-15 - e50ccd5
+### 2026-09-15 - cccde8a
 Fixed the bug that was killing every coupon run, and gave runs a screen to fail
 on. The selector's argument validator listed every coupon field except
 `primaryItem` (`convex/deals/match.ts`), which the extractor had started setting
