@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-18T19:07:00Z
+- **Last updated:** 2026-09-18T19:08:56Z
 
 ## Log
 
@@ -711,7 +711,7 @@ locked out of searching again, permanently: the stalled flag is derived at read
 time for display and no cron reaps the row. Recovery took invoking the step by
 hand.
 
-### 2026-09-18 - working tree
+### 2026-09-18 - 184110e
 Cut the Ask screen. The kitchen panel's recipe search is now the only place a
 prompt goes in: `app/prompt/page.tsx` and `app/components/PromptConsole.tsx` are
 deleted and the nav is Kitchen and Preferences (`app/components/AppHeader.tsx`).
