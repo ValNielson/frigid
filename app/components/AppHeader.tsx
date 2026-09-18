@@ -9,7 +9,6 @@ import { Logo } from "./ui";
 
 const NAV = [
   { href: "/home", label: "Kitchen" },
-  { href: "/prompt", label: "Ask" },
   { href: "/onboarding?edit=1", label: "Preferences" },
 ];
 

@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-15T19:04:16Z
+- **Last updated:** 2026-09-18T19:07:00Z
 
 ## Log
 
@@ -710,3 +710,88 @@ job here. Every active status blocks the one-at-a-time guard, so the user is
 locked out of searching again, permanently: the stalled flag is derived at read
 time for display and no cron reaps the row. Recovery took invoking the step by
 hand.
+
+### 2026-09-18 - working tree
+Cut the Ask screen. The kitchen panel's recipe search is now the only place a
+prompt goes in: `app/prompt/page.tsx` and `app/components/PromptConsole.tsx` are
+deleted and the nav is Kitchen and Preferences (`app/components/AppHeader.tsx`).
+
+Deals already reached that email — `attachDeals` matches stored coupons against
+the job's own shopping list and `recipeEmail.ts` renders an "on sale for this
+list" section in both bodies (`convex/recipeRun.ts`, `convex/recipeEmail.ts`).
+Removing Ask helps it rather than replacing it: a manual run spent the shared
+cooldown that the recipe step needs before it may scrape a cold city, so asking
+first could leave the next kitchen email with no deals in it.
+
+What was missing was proof. The seam tests stopped where the coupons landed on
+the job row, so the renderer — the one part that decides whether a deal reaches
+the inbox — had no coverage at all. `tests/recipeEmail.test.ts` covers deals in
+the text and HTML bodies, the absent and empty cases printing no heading, and
+scraped coupon text being escaped with non-http source URLs dropped. Suite is at
+195, up from 187. The tests were checked against a deliberately broken renderer
+first: disabling the deals section fails five of the eight, and the three that
+do not touch deals still pass.
+
+Then took the dead code out rather than leaving it. Coupon discovery now has
+one public function, `latestRun`, and no public way to start a run at all:
+`requestRun` was the Ask screen's backend and `findForIngredients` never had a
+caller, so both are gone (`convex/deals.ts`, 180 lines to 69). Runs begin in
+exactly two places, neither reachable from a client — the recipe pipeline's
+deals step and the daily cron. A run is the most expensive thing this product
+does, so that is a smaller surface worth having. `DealsRunCard` lost its
+unreachable full-size variant and the prop that selected it, keeping the one
+card the home page renders (172 lines to 106).
+
+The guard those mutations wrapped is still the thing that costs money when it is
+wrong, so its tests now drive it directly instead of through a deleted caller:
+the cooldown, the row being written before it can be read, the cooldown expiring,
+and the shared daily ledger, all against `deals.data.runBlocked` — whose only
+caller left is the recipe step (`tests/deals.test.ts`). The one test that went
+away with its subject checked an empty ingredient list, which was
+`findForIngredients`-only validation.
+
+Verified: 194 tests pass, lint and TypeScript are clean, and `next build`
+succeeds with `/prompt` absent from the route manifest and no reference to the
+deleted component or its href anywhere in the built bundles. Against the local
+backend, `deals:latestRun` answers and `deals:requestRun` returns "Could not
+find function"; the deployment's function list shows `deals.js:latestRun` public
+and every other deals function internal.
+
+Then ran it for real, twice, against the local backend — the first live proof
+this feature has ever had. The first run returned four chicken recipes and a
+nineteen-item list, emailed, and attached no deals at all. Not the bug it looked
+like: the pool was warm, sixty-five coupons for the right stores in the right
+city, and the match was honestly empty. The pool was a Trader Joe's seasonal
+aisle — pumpkin gnocchi, Jaffa cakes, sweet tea — and the list was raw chicken
+and spices. The near-miss says the rule is working: "Chicken Lasagna Florentine"
+carries `chicken` in its itemTerms but `lasagna` as its primaryItem, and
+matchIngredients keys on primaryItem, which is the guard that stopped "cheddar"
+returning a box of Goldfish. Eleven credits, no LLM calls, all JSON-LD.
+
+Correct, and a disappointing inbox — so the kitchen prompt now runs the coupon
+search itself, behind the recipe email rather than instead of it. The warm path
+used to match from stored coupons and stop, never scraping; it now schedules a
+real run once the recipes are away (`searchForDeals` in `convex/recipeRun.ts`).
+Profile-wide on purpose rather than narrowed to the shopping list, since
+re-applying the filter that just came back empty would reliably send nothing.
+Fire-and-forget, so it cannot delay or fail the recipes, and it answers to the
+same `runBlocked` guard as every other run, so it cannot outspend the cooldown
+or the daily budget.
+
+The second run proved both halves. Two recipes, thirteen items, and a populated
+"on sale for this list" in the recipe email — olive oil and chicken broth, both
+Aldi. Behind it the follow-up search read five Cleveland stores, found 48
+coupons, matched 12 and mailed them as a digest, which is the first coupon email
+this project has sent from a prompt. The city's pool went from 65 coupons to 88,
+so the next search starts warmer. Cost for the day: 60 deals credits and 22
+recipe credits.
+
+Tests are at 196. The one test asserting the warm path "never starts a run" was
+rewritten rather than deleted, since that is exactly the behaviour that changed,
+and two were added: the follow-up fires with trigger `recipe-after`, and the
+guard refuses it inside a cooldown.
+
+Still open. The rate limiter turned away five of the ten merchants it wanted
+(`heinens.com`, `davesmarkets.com` and three others), so that run is recorded as
+partial rather than as full coverage of the city. Nothing here is committed, and
+none of it has run against the production deployment.

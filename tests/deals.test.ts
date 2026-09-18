@@ -53,75 +53,67 @@ async function signIn(t: ReturnType<typeof harness>) {
   });
 }
 
-test("a run is refused without a session", async () => {
+/**
+ * The guard itself, rather than a mutation wrapping it.
+ *
+ * It used to be reached through two public mutations; both are gone with the
+ * Ask screen, and the recipe pipeline's deals step is the only caller left. The
+ * rules it enforces are unchanged, so they are pinned here directly — the guard
+ * is what costs money when it is wrong, not whoever calls it.
+ */
+test("a fresh user is allowed to run", async () => {
   const t = harness();
-  const result = await t.mutation(api.deals.requestRun, {
-    sessionToken: "not-a-real-token",
-  });
-  expect(result.ok).toBe(false);
-  expect(result.error).toMatch(/verify your email/i);
-});
+  const userId = await signIn(t);
 
-test("the first run is accepted and leaves a row behind", async () => {
-  const t = harness();
-  await signIn(t);
-
-  expect(await t.mutation(api.deals.requestRun, { sessionToken: TOKEN })).toEqual({
-    ok: true,
-  });
-
-  const runs = await t.run(async (ctx) => ctx.db.query("runs").collect());
-  expect(runs).toHaveLength(1);
-  expect(runs[0]?.trigger).toBe("prompt");
+  expect(
+    await t.query(internal.deals.data.runBlocked, { userId, now: Date.now() }),
+  ).toBeNull();
 });
 
 /**
- * The row has to exist by the time the mutation returns. It used to be written
- * by the scheduled action, so two clicks in a row both saw an empty table, both
- * passed the cooldown, and both paid.
+ * The row has to exist by the time the run is started, not once the scheduled
+ * action gets around to it. It used to be written by the action, so two
+ * requests in a row both saw an empty table, both passed the cooldown, and both
+ * paid.
  */
-test("a second run straight away is refused, not scheduled", async () => {
+test("starting a run writes its row at once, and that row blocks the next", async () => {
   const t = harness();
-  await signIn(t);
+  const userId = await signIn(t);
+  const now = Date.now();
 
-  await t.mutation(api.deals.requestRun, { sessionToken: TOKEN });
-  const second = await t.mutation(api.deals.requestRun, { sessionToken: TOKEN });
-
-  expect(second.ok).toBe(false);
-  expect(second.cooldownSeconds).toBeGreaterThan(0);
-  expect(second.cooldownSeconds).toBeLessThanOrEqual(MANUAL_RUN_COOLDOWN_MS / 1000);
-
-  const runs = await t.run(async (ctx) => ctx.db.query("runs").collect());
-  expect(runs).toHaveLength(1);
-});
-
-/**
- * findForIngredients used to enforce nothing at all, which left a public
- * mutation able to schedule unbounded runs in a loop.
- */
-test("the ingredients entry point honours the same cooldown", async () => {
-  const t = harness();
-  await signIn(t);
-
-  await t.mutation(api.deals.requestRun, { sessionToken: TOKEN });
-  const second = await t.mutation(api.deals.findForIngredients, {
-    sessionToken: TOKEN,
-    ingredients: ["chicken", "rice"],
+  await t.mutation(internal.deals.data.startRun, {
+    userId,
+    kind: "deals",
+    trigger: "recipe-cold",
+    now,
   });
 
-  expect(second.ok).toBe(false);
   expect(await t.run(async (ctx) => ctx.db.query("runs").collect())).toHaveLength(1);
+
+  const blocked = await t.query(internal.deals.data.runBlocked, { userId, now });
+  expect(blocked?.error).toMatch(/still working/i);
+  expect(blocked?.cooldownSeconds).toBeGreaterThan(0);
+  expect(blocked?.cooldownSeconds).toBeLessThanOrEqual(MANUAL_RUN_COOLDOWN_MS / 1000);
 });
 
-test("an empty ingredient list is refused before anything is scheduled", async () => {
+test("the cooldown lets go once it has passed", async () => {
   const t = harness();
-  await signIn(t);
-  const result = await t.mutation(api.deals.findForIngredients, {
-    sessionToken: TOKEN,
-    ingredients: [],
+  const userId = await signIn(t);
+  const now = Date.now();
+
+  await t.mutation(internal.deals.data.startRun, {
+    userId,
+    kind: "deals",
+    trigger: "recipe-cold",
+    now,
   });
-  expect(result.ok).toBe(false);
-  expect(await t.run(async (ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+
+  expect(
+    await t.query(internal.deals.data.runBlocked, {
+      userId,
+      now: now + MANUAL_RUN_COOLDOWN_MS + 1,
+    }),
+  ).toBeNull();
 });
 
 /**
@@ -129,9 +121,9 @@ test("an empty ingredient list is refused before anything is scheduled", async (
  * against it and never read it, so the brake could not stop the heavier of the
  * two pipelines.
  */
-test("both entry points stop when the shared daily budget is gone", async () => {
+test("the shared daily budget stops a run", async () => {
   const t = harness();
-  await signIn(t);
+  const userId = await signIn(t);
 
   await t.run(async (ctx) => {
     await ctx.db.insert("creditLedger", {
@@ -141,23 +133,17 @@ test("both entry points stop when the shared daily budget is gone", async () => 
     });
   });
 
-  const run = await t.mutation(api.deals.requestRun, { sessionToken: TOKEN });
-  expect(run.ok).toBe(false);
-  expect(run.error).toMatch(/budget/i);
-
-  const ingredients = await t.mutation(api.deals.findForIngredients, {
-    sessionToken: TOKEN,
-    ingredients: ["chicken"],
+  const blocked = await t.query(internal.deals.data.runBlocked, {
+    userId,
+    now: Date.now(),
   });
-  expect(ingredients.ok).toBe(false);
-  expect(ingredients.error).toMatch(/budget/i);
-
-  expect(await t.run(async (ctx) => ctx.db.query("runs").collect())).toHaveLength(0);
+  expect(blocked?.error).toMatch(/budget/i);
+  expect(blocked?.cooldownSeconds).toBeUndefined();
 });
 
 test("yesterday's spending does not count against today", async () => {
   const t = harness();
-  await signIn(t);
+  const userId = await signIn(t);
 
   await t.run(async (ctx) => {
     await ctx.db.insert("creditLedger", {
@@ -167,9 +153,19 @@ test("yesterday's spending does not count against today", async () => {
     });
   });
 
-  expect(await t.mutation(api.deals.requestRun, { sessionToken: TOKEN })).toEqual({
-    ok: true,
-  });
+  expect(
+    await t.query(internal.deals.data.runBlocked, { userId, now: Date.now() }),
+  ).toBeNull();
+});
+
+/** The one public function left, and it must still refuse a stranger. */
+test("the latest run is not readable without a session", async () => {
+  const t = harness();
+  await signIn(t);
+
+  expect(
+    await t.query(api.deals.latestRun, { sessionToken: "not-a-real-token" }),
+  ).toBeNull();
 });
 
 /**

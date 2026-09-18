@@ -639,6 +639,7 @@ export const attachDeals = internalAction({
           deals: await toDeals(ctx, pool, items, realAllergies(job.answers)),
         });
         await toEmail();
+        await searchForDeals(ctx, job.userId, location);
         return null;
       }
 
@@ -698,6 +699,51 @@ export const attachDeals = internalAction({
     }
   },
 });
+
+/**
+ * Starts a full coupon search behind the email that just went out.
+ *
+ * The warm path answers "is anything on this list on sale" from coupons already
+ * stored, which is free and instant but only ever as good as the pool. A live
+ * Cleveland search matched none of nineteen ingredients against sixty-five held
+ * coupons, because the pool was a Trader Joe's seasonal aisle and the list was
+ * raw chicken and spices — a correct answer, and a disappointing inbox.
+ *
+ * So the search runs anyway, after the recipes rather than in front of them.
+ * Deliberately not narrowed to the shopping list: this one is the profile-wide
+ * digest, and re-applying the ingredient filter that just came back empty would
+ * reliably send nothing. It refreshes the pool for the next search as a side
+ * effect.
+ *
+ * Fire-and-forget. The recipes are already in the user's inbox, so nothing here
+ * may delay or fail them — and the same guard every other run answers to
+ * decides whether this one may spend anything.
+ */
+async function searchForDeals(
+  ctx: Ctx,
+  userId: Id<"users">,
+  location: string,
+): Promise<void> {
+  if (location.length === 0) return;
+
+  const blocked = await ctx.runQuery(internal.deals.data.runBlocked, {
+    userId,
+    now: Date.now(),
+  });
+  if (blocked !== null) return;
+
+  const runId = await ctx.runMutation(internal.deals.data.startRun, {
+    userId,
+    kind: "deals",
+    trigger: "recipe-after",
+    now: Date.now(),
+  });
+  await ctx.scheduler.runAfter(0, internal.deals.run.execute, {
+    userId,
+    runId,
+    trigger: "recipe-after",
+  });
+}
 
 /**
  * The coupons this person may see, for the stores they named, in their own city.

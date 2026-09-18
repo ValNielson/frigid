@@ -71,11 +71,9 @@ export function HomeScreen() {
               )}
             </section>
 
-            {/* Falls back to the old "coming next" copy until there is a run to
-                report, which keeps it honest on a brand new account. */}
             <section className="flex flex-col gap-3">
               <h2 className="slab">This week&rsquo;s picks</h2>
-              <DealsRunCard compact />
+              <DealsRunCard />
             </section>
           </div>
 
