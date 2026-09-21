@@ -20,6 +20,7 @@ import {
   isScrapeFresh,
   locationKey,
   matchIngredients,
+  oneOfferPerItem,
   matchesMetro,
   normalizeDomain,
   rawLocationKey,
@@ -228,6 +229,33 @@ test("ingredient matching ignores noise words and empty input", () => {
   const coupons = [coupon("Bananas", undefined, ["banana"])];
   assert.equal(matchIngredients(coupons, ["a", "of", ""]).length, 0);
   assert.equal(matchIngredients(coupons, []).length, 0);
+});
+
+test("one offer per subject, keeping the first of each", () => {
+  // A real Canton pool: four carrot offers and four wines out of sixteen
+  // matches, which filled the whole six-line panel with two ingredients.
+  const offers = [
+    { title: "Aldi Butter Herb Carrots", primaryItem: "carrots" },
+    { title: "Season's Choice Hot Honey Carrots", primaryItem: "carrot" },
+    { title: "Bota Box or Black Box", primaryItem: "wine" },
+    { title: "Apothic or Bogle", primaryItem: "wine" },
+    { title: "Boneless Chuck Roast", primaryItem: "beef" },
+  ];
+
+  assert.deepEqual(
+    oneOfferPerItem(offers).map((o) => o.title),
+    ["Aldi Butter Herb Carrots", "Bota Box or Black Box", "Boneless Chuck Roast"],
+  );
+});
+
+test("an offer with no subject falls back to its own title", () => {
+  const offers = [
+    { title: "Weekly special" },
+    { title: "weekly  Special" },
+    { title: "Something else" },
+  ];
+  // Two spellings of one title collapse; a different offer survives.
+  assert.equal(oneOfferPerItem(offers).length, 2);
 });
 
 test("scrape freshness respects the ttl boundary", () => {

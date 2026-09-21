@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-18T19:08:56Z
+- **Last updated:** 2026-09-21T18:13:24Z
 
 ## Log
 
@@ -795,3 +795,72 @@ Still open. The rate limiter turned away five of the ten merchants it wanted
 (`heinens.com`, `davesmarkets.com` and three others), so that run is recorded as
 partial rather than as full coverage of the city. Nothing here is committed, and
 none of it has run against the production deployment.
+
+### 2026-09-21 - working tree
+Made the deploy path actually work and cleared the rough edges a demo would
+show. The frontend now builds as a static export (`output: "export"`, images
+unoptimized) into `out/`, and `npm run deploy` points the static-hosting CLI at
+it with an explicit `--dist ./out`; it had been defaulting to a `./dist` this
+project never produced, so the deploy script could not have succeeded. The
+header's "Frontend: Convex static hosting" is only true as of this change.
+
+The subtler one: `NEXT_PUBLIC_*` is inlined at build time and `.env.local` holds
+the dev deployment, so a deploy would have shipped a production site reading the
+dev database. The static-hosting CLI passes the right URL to the build as
+`VITE_CONVEX_URL`, and `next.config.ts` now prefers it. Verified by building with
+it set and confirming the dev URL is absent from `out/`.
+
+Product fixes. Water, ice, salt and plain pepper no longer reach the shopping
+list, which also stopped bottled water appearing as a deal for a beef stew. The
+rule reads words rather than phrases: an item goes only when every significant
+word in it is noise, so "red pepper", "coconut water" and "hot sauce" all stay.
+That is the second version — the first enumerated spellings and a live run still
+produced "kosher salt and pepper" and "cracked black pepper", which is the sort
+of thing no list of phrases ever finishes covering.
+A new `oneOfferPerItem` collapses a weekly ad's four spellings of one carrot to
+one before the six-deal cut, on both the warm and cold paths; a real Canton pool
+returned sixteen matches that were three carrots and four wines. The two muted
+text colors were under WCAG AA (4.46:1 and 2.81:1) and are now 5.1:1 and 4.6:1.
+The deals card no longer says "sent to your email" for a run started by a recipe
+search, which suppresses its own digest on purpose.
+
+Files: `next.config.ts`, `package.json`, `convex/recipeText.ts`,
+`convex/deals/policy.ts`, `convex/deals/run.ts`, `convex/recipeRun.ts`,
+`app/globals.css`, `app/components/DealsRunCard.tsx`, plus `app/icon.svg` and the
+removal of five unused scaffold SVGs. Tests went 196 to 200; the "deals are
+capped" test was rewritten rather than deleted, since collapsing duplicates is
+exactly the behaviour it asserted against.
+
+Also rewrote `README.md` around the project rather than the agent tooling: what
+it does, setup, how each subsystem works, the cost model, and deploy steps. Cut
+from 350 lines to 145 on a second pass — the design war stories belong in the
+presentation material, not in the file someone reads to get the thing running.
+What stayed is what a newcomer trips over: secrets live on the Convex deployment
+rather than in `.env.local`, and `NEXT_PUBLIC_CONVEX_URL` must not be set by hand.
+
+Ran the pipeline end to end against the dev deployment for the first time since
+the deals step was wired in, driving the public API with a real session minted
+through `testSeedAuth.mintSession` and revoked afterwards. Two useful results.
+
+"creamy tomato pasta" finished with four recipes, a nineteen-item shopping list
+and six coupons on the row — the first recipe job this project has produced with
+deals attached, since every earlier one predated its city's pool being warm. The
+repeat run of the same prompt cost zero credits, both the search and the pages
+coming out of cache, which is the cost model working as designed.
+
+"a cold night hearty beef stew" failed, correctly. The profile lists celery as
+an allergy and beef stew is celery: four of five recipes were dropped by the
+allergen gate and the fifth had no readable ingredient list, so the job ended
+with "we found recipes but could not read any that fit your profile" rather than
+sending anything. The gate did its job; the prompt was simply a bad fit for that
+profile, and the demo script has been pointed at the pasta one instead.
+
+Still open. Coupon matching is loose in a way `oneOfferPerItem` cannot fix:
+`sharesFoodWord` matches on any shared word in either direction, so "heavy
+cream" pulled in ice cream, "juice of 1 lemon" pulled in orange juice, and
+"coconut milk" pulled in oat milk. A modifier that changes the food entirely
+does not block the match. Tightening that is a change to the matcher rather than
+a patch, and it is not attempted here.
+
+Not committed, and the frontend is still not published — the live app remains
+unavailable.

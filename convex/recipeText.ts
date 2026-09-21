@@ -279,6 +279,65 @@ export function slugifyItem(item: string): string {
 
 export type ShoppingItem = { item: string; usedIn: string[]; department: string };
 
+/**
+ * The words that, on their own, make up something nobody shops for.
+ *
+ * An enumerated list of phrases was the first attempt and it was too literal:
+ * a live run still produced "kosher salt and pepper" and "cracked black
+ * pepper", because recipes qualify these endlessly and there is no end to the
+ * spellings. So the rule is compositional instead — an item is dropped only
+ * when *every* significant word in it is one of these.
+ *
+ * That is what keeps "red pepper", "coconut water" and "watermelon" on the
+ * list: each carries a word that is a real food. Salt, pepper and tap water
+ * carry none.
+ */
+const NOISE_WORDS: ReadonlySet<string> = new Set([
+  // the things themselves
+  "salt",
+  "pepper",
+  "peppercorn",
+  "water",
+  "ice",
+  "cube",
+  // and the ways recipes qualify them
+  "and",
+  "black",
+  "white",
+  "kosher",
+  "sea",
+  "table",
+  "coarse",
+  "fine",
+  "flaky",
+  "flake",
+  "ground",
+  "cracked",
+  "freshly",
+  "fresh",
+  "cold",
+  "warm",
+  "hot",
+  "boiling",
+  "lukewarm",
+  "room",
+  "temperature",
+]);
+
+/**
+ * True when an ingredient is not something anyone puts on a list.
+ *
+ * Separate from the staples question because this holds regardless of what the
+ * user answered: you cannot buy the water from your own tap, and a list that
+ * says "water" is also what put bottled water in the deals panel.
+ */
+export function isNotShopping(item: string): boolean {
+  const words = slugifyItem(item)
+    .split("-")
+    .filter((word) => word.length > 0);
+  return words.length > 0 && words.every((word) => NOISE_WORDS.has(word));
+}
+
 /** True when the user told us they always have this, so it is not worth listing. */
 export function isPantryStaple(item: string, staples: readonly string[]): boolean {
   const slug = slugifyItem(item);
@@ -306,6 +365,7 @@ export function dedupeIngredients(
   for (const recipe of recipes) {
     for (const ingredient of recipe.ingredients) {
       if (ingredient.item.length === 0) continue;
+      if (isNotShopping(ingredient.item)) continue;
       if (isPantryStaple(ingredient.item, staples)) continue;
 
       const slug = slugifyItem(ingredient.item);

@@ -42,6 +42,7 @@ import {
   excludeAllergens,
   locationKey,
   matchIngredients,
+  oneOfferPerItem,
   splitStores,
 } from "./deals/policy";
 import {
@@ -786,6 +787,10 @@ type PoolCoupon = {
  *
  * Allergens are excluded after matching and never delegated to a model, the
  * same order deals/match.ts uses and for the same reason.
+ *
+ * Collapsing to one offer per subject happens before the slice, not after:
+ * cutting to six first and de-duplicating second is how the panel ended up
+ * showing three carrots and two wines out of sixteen genuine matches.
  */
 async function toDeals(
   ctx: Ctx,
@@ -793,10 +798,9 @@ async function toDeals(
   items: string[],
   allergies: string[],
 ) {
-  const matched = excludeAllergens(matchIngredients(pool, items), allergies).slice(
-    0,
-    MAX_DEALS_PER_JOB,
-  );
+  const matched = oneOfferPerItem(
+    excludeAllergens(matchIngredients(pool, items), allergies),
+  ).slice(0, MAX_DEALS_PER_JOB);
   if (matched.length === 0) return [];
 
   const names = await ctx.runQuery(internal.deals.data.merchantNamesByIds, {

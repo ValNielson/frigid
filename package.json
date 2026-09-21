@@ -9,7 +9,7 @@
     "start": "next start",
     "lint": "eslint",
     "test": "vitest run",
-    "deploy": "npx @convex-dev/static-hosting deploy",
+    "deploy": "npx @convex-dev/static-hosting deploy --dist ./out --build-command \"npm run build\"",
     "test:watch": "vitest"
   },
   "dependencies": {

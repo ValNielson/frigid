@@ -1,136 +1,145 @@
 # frigid
-A all in one recipe, ingreident hotspot
 
-Built for the **Convex All Gas Hackathon**, sponsored by OpenAI, Firecrawl, and
-AgentMail.
+Ask for something to cook. frigid searches real recipe sites, reads the recipes,
+drops anything that clashes with your allergies, merges the rest into one
+shopping list by aisle, checks it against this week's coupons at your stores, and
+emails you the lot.
 
-**Status:** email verification, sessions, and onboarding are in. Recipe and
-ingredient features are next.
+Built for the Convex All Gas Hackathon.
 
-## Development environment
+```
+"a cold night hearty beef stew"
 
-| Piece | Status |
-|---|---|
-| Agent | Claude Code 2.1.231 |
-| Convex integration | Official Convex plugin v1.10.0, user scope |
-| Convex MCP server | `plugin:convex:convex` — connected |
-| Build log skill | `convex-hackathon-skill`, project-local |
-| Frontend target | Convex static hosting (`*.convex.site`) |
+  4 recipes · 15 things to buy · 3 of them on sale at Kroger and Aldi
+```
 
-## How a visitor moves through the app
+No recipe is generated. Every one is a link, and the ingredients come out of the
+page's own `schema.org/Recipe` markup.
 
-| Verified | Onboarded | Lands on |
+## Setup
+
+Needs Node 20+, a Convex account, and keys for Firecrawl, OpenAI and AgentMail.
+
+```sh
+npm install
+npx convex dev        # creates the deployment and writes .env.local; leave running
+```
+
+Secrets live on the Convex deployment, not in `.env.local` — functions read
+`process.env` from the deployment, so a key in a local file is invisible to them.
+
+```sh
+npx convex env set OPENAI_API_KEY            sk-...
+npx convex env set FIRECRAWL_API_KEY         fc-...
+npx convex env set AGENTMAIL_API_KEY         ...
+npx convex env set AGENTMAIL_INBOX_ID        you@yourdomain.agentmail.to
+npx convex env set VERIFICATION_CODE_PEPPER  "$(openssl rand -base64 32)"
+```
+
+```sh
+npm run dev           # localhost:3000
+```
+
+Optional:
+
+| Variable | Default | |
 |---|---|---|
-| no | — | `/` — enter an email, get a 6-digit code |
-| yes | no | `/onboarding` — the taste-profile questionnaire |
-| yes | yes | `/home` |
+| `FIRECRAWL_MODE` | `live` | `fixture` serves every paid Firecrawl call from `convex/fixtures/` |
+| `RECIPE_LLM_FALLBACK` | `on` | `off` disables the paid recipe extraction fallback |
+| `RECIPE_EXTRACT_MODEL` | `gpt-5.5` | model for that fallback |
+| `AGENTMAIL_WEBHOOK_SECRET` | — | needed only for inbound mail |
 
-Verifying a code mints an opaque session token. It is hashed before storage, so
-the database never holds anything that can be replayed as a sign-in. Gating is
-client-side (`app/components/AuthGate.tsx`) because static hosting has no Node
-server at runtime, but every Convex function re-resolves the token server-side
-and never trusts a client-supplied email address.
+`VERIFICATION_CODE_PEPPER` peppers both code and session-token hashes. Changing
+it signs everyone out.
 
-Onboarding answers live in `preferences`, alongside a `promptContext` string
-built once at save time. Future recipe features inject that string instead of
-re-deriving a profile from twenty answers. The questionnaire and the report are
-plain TypeScript (`convex/onboardingQuestions.ts`, `convex/onboardingSummary.ts`)
-with no model call, so onboarding costs zero OpenAI tokens.
+## How it works
 
-The Convex plugin ships 18 skills, 2 subagents, 3 hooks, and an MCP server for
-live deployment introspection. It is installed at user scope, so it applies to
-every project on the machine rather than being vendored into this repo.
+**Sign-in.** No passwords. An emailed six-digit code mints an opaque session
+token, stored in `localStorage` because static hosting has no server to set a
+cookie. It expires in seven days and the database keeps only
+`sha256(token + pepper)`. `AuthGate` gates routes in the browser, but every
+Convex function re-resolves the token through `userForToken()` — nothing trusts a
+client-supplied email.
 
-The hackathon build log skill is project-local, at
-`.claude/skills/convex-hackathon-skill/`:
+**Profile.** 21 questions (`convex/onboardingQuestions.ts`), stored as a
+`questionId → answer` record so adding one needs no migration. Allergies are
+enforced by a keyword table (`convex/allergens.ts`), never a model.
 
-```text
-.claude/skills/convex-hackathon-skill/
-├── SKILL.md
-└── references/
-    └── log-format.md
-```
+**Pipeline.** Five scheduled actions in `convex/recipeRun.ts`, each patching the
+same `recipeJobs` row. The home screen subscribes to that row, so the progress
+bar is the backend's actual state — no workflow engine, no polling.
 
-## Getting set up
+| | |
+|---|---|
+| `searching` | one Firecrawl search across 14 hand-verified recipe domains |
+| `reading` | up to 5 scrapes to keep 4 recipes, ingredients from JSON-LD |
+| `shopping` | dedupe across recipes, group by aisle, add store links |
+| `dealing` | match stored coupons against this list |
+| `emailing` | AgentMail, with one-click unsubscribe |
 
-Anyone cloning this repo needs the Convex plugin installed once:
+`dealing` can't fail the job. A warm coupon pool is a database read and the email
+goes straight out; a cold city schedules a coupon run that releases the email
+when it lands. Nothing retries — a failed scrape was already billed.
 
-```sh
-claude plugin install convex@claude-plugins-official --scope user
-claude plugin details convex@claude-plugins-official
-claude mcp list
-```
+**Coupons.** `convex/deals/` finds merchants for a city, scrapes their offer
+pages, and stores each offer with one `primaryItem` saying what it's for.
+Everything is keyed by metro, since weekly ads are regional. A daily cron mails
+whoever is due.
 
-Start your session from this repository root. The build log skill is
-project-local, so it only resolves when the session root is this directory.
-
-Verify both are live:
-
-```sh
-claude -p "List skill names available to you containing 'convex'"
-```
-
-Expect `convex-hackathon-skill` plus the `convex:*` plugin skills.
-
-## Build log
-
-`hackathon.md` at the repository root is the evidence-based build log required
-for submission. It is public — no secrets, credentials, or personal data belong
-in it.
-
-Run `/hackathon` after meaningful progress to append a dated entry. The skill
-reads local repository evidence only; it will not invent history, and it never
-commits, deploys, or submits.
+**Staying free.** Firecrawl gives 1,000 credits a month and 10 requests a minute,
+shared by both pipelines. Four caches keyed by URL rather than by user (recipes
+90d, pages 30d, searches and store lookups 7d), one credit ledger
+(`credits.ts`), one request limiter at 8/min (`firecrawlRate.ts`), and the caps
+in `recipePolicy.ts` — 5 searches per user per day, 120 credits per day overall.
 
 ## Tests
 
 ```sh
-npm test          # vitest, single run
-npm run test:watch
+npm test
 ```
 
-Two kinds live in `tests/`. Most are plain unit tests over the pure modules —
-ingredient parsing, JSON-LD extraction, the allergen table, the email and
-location policies — and need nothing running. The rest use `convex-test` to
-drive real Convex functions against an in-memory database; those files open with
-a `// @vitest-environment edge-runtime` pragma, because that is the environment
-Convex functions actually run in.
+Unit tests over the pure modules need nothing running. The rest use `convex-test`
+against an in-memory database and open with `// @vitest-environment edge-runtime`.
+Nothing calls Firecrawl, OpenAI or AgentMail.
 
-Nothing here calls Firecrawl, OpenAI, or AgentMail. `FIRECRAWL_MODE=fixture`
-short-circuits every paid Firecrawl call if you want to drive the recipe
-pipeline end to end without spending credits.
+## Deploy
 
-## Frontend hosting
-
-This project deploys to `convex.site` via the official Convex Static Hosting
-component. Install it when there is an app to host:
+First time:
 
 ```sh
-npm install @convex-dev/static-hosting
-npx @convex-dev/static-hosting setup
+npx convex deploy
+npx convex env set --prod OPENAI_API_KEY sk-...   # and the other four
 ```
 
-Production deploys land at `https://<deployment>.convex.site`.
+Then, every time:
 
-## Submission
+```sh
+npm run deploy        # live at https://<deployment>.convex.site
+```
 
-Submit at
-<https://vibeapps.dev/judging/convex-all-gas-hackathon-openai/submit>.
+Don't set `NEXT_PUBLIC_CONVEX_URL` yourself. It's inlined at build time and
+`.env.local` holds your *dev* deployment, so a plain build ships a production
+site pointed at the dev database. The static-hosting CLI passes the right URL as
+`VITE_CONVEX_URL` and `next.config.ts` prefers it. Check with:
 
-Deadline: **September 22, 12:00 PM PT**.
+```sh
+grep -rho "https://[a-z0-9-]*\.convex\.cloud" out/ | sort -u
+```
 
-Required:
+Afterwards, point AgentMail's webhook at
+`https://<deployment>.convex.site/agentmail/webhook` and set
+`AGENTMAIL_WEBHOOK_SECRET`.
 
-- [ ] Public source repository
-- [ ] `hackathon.md` at the repository root
-- [ ] Live `convex.site` URL judges can open without an invite
-- [ ] Video no longer than three minutes
+Static export rules out rewrites, redirects, headers, middleware, Server Actions
+and `next/image` optimization. The HTTP routes this app needs live in Convex's
+router instead.
 
-## License
+## Notes
 
-MIT. See [LICENSE](LICENSE).
+`hackathon.md` is the build log required for submission — public, so no secrets
+in it. Run `/hackathon` to append an entry.
 
-## getting Started
-npx convex dev
-npm install
-npm run dev
+Built with Claude Code and the Convex plugin
+(`claude plugin install convex@claude-plugins-official --scope user`).
+
+MIT.

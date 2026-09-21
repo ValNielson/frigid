@@ -22,7 +22,12 @@ function outcome(run: Run): string {
     return "Nothing worth sending this time. The stores near you are not discounting anything that suits your profile.";
   }
   const plural = run.couponsMatched === 1 ? "deal" : "deals";
-  return `${run.couponsMatched} ${plural} matched to your profile, sent to your email.`;
+  // A run started by a recipe search suppresses its own digest on purpose —
+  // the deals ride along in the recipe email instead. Claiming a second email
+  // that was never sent is worse than saying nothing about where they went.
+  return run.kind === "ingredients"
+    ? `${run.couponsMatched} ${plural} matched to your shopping list.`
+    : `${run.couponsMatched} ${plural} matched to your profile, sent to your email.`;
 }
 
 /**

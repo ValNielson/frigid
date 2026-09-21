@@ -222,13 +222,32 @@ test("an allergen-tripping coupon never reaches the job", async () => {
   expect(titles.some((title) => title.includes("chicken"))).toBe(true);
 });
 
-test("deals are capped", async () => {
+test("deals are capped, and ten offers for one thing count as one", async () => {
+  // Rewritten rather than deleted: this used to assert that ten chicken offers
+  // filled all six slots, which is the behaviour that changed. A real weekly ad
+  // carries four spellings of the same carrot, and a panel showing four carrots
+  // and two wines out of sixteen genuine matches is worse than one showing
+  // three different things.
   const t = harness();
   const { jobId } = await seed(t, {
-    coupons: Array.from({ length: MAX_DEALS_PER_JOB + 4 }, (_, i) => `Chicken offer ${i}`),
+    coupons: [
+      ...Array.from({ length: MAX_DEALS_PER_JOB + 4 }, (_, i) => `Chicken offer ${i}`),
+      "Celery bunch 99c",
+      "Cream cheese 2 for $5",
+    ],
   });
   await t.action(internal.recipeRun.attachDeals, { jobId });
-  expect((await jobRow(t, jobId))?.deals?.length).toBe(MAX_DEALS_PER_JOB);
+
+  const deals = (await jobRow(t, jobId))?.deals ?? [];
+  expect(deals.length).toBeLessThanOrEqual(MAX_DEALS_PER_JOB);
+  expect(deals.filter((d) => d.title.includes("Chicken offer")).length).toBe(1);
+  // The pool is read newest-first, so the survivor is the most recent offer
+  // for that subject rather than the oldest one still sitting in the table.
+  expect(deals.map((d) => d.title).sort()).toEqual([
+    "Celery bunch 99c",
+    "Chicken offer 9",
+    "Cream cheese 2 for $5",
+  ]);
 });
 
 /**

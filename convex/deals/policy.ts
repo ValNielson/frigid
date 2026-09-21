@@ -57,7 +57,7 @@ export const STORE_DOMAINS: Readonly<Record<string, string>> = {
  * drifted from the recipe pipeline's copy. See convex/allergens.ts.
  */
 import { ALLERGEN_TERMS } from "../allergens";
-import { sharesFoodWord } from "../words";
+import { foodWords, sharesFoodWord } from "../words";
 
 export { ALLERGEN_TERMS };
 
@@ -379,6 +379,38 @@ export function matchIngredients<
       coupon.itemTerms.some((term) => sharesFoodWord(item, term)),
     );
   });
+}
+
+/**
+ * At most one offer per thing on sale.
+ *
+ * A weekly ad carries four variations of the same carrot and five sparkling
+ * waters, and matching is happy to return all nine. Printing them fills a
+ * six-line panel with one vegetable, so the first offer for a subject wins and
+ * the rest are dropped — the panel is meant to say "these things on your list
+ * are cheap this week", not to reprint the ad.
+ *
+ * Falls back to the title when a row predates `primaryItem`, which at worst
+ * keeps two near-identical offers rather than collapsing two different ones.
+ */
+export function oneOfferPerItem<
+  T extends { title: string; primaryItem?: string },
+>(coupons: readonly T[]): T[] {
+  const seen = new Set<string>();
+  const kept: T[] = [];
+
+  for (const coupon of coupons) {
+    const subject = coupon.primaryItem?.trim();
+    const key =
+      subject !== undefined && subject.length > 0
+        ? foodWords(subject).join(" ")
+        : `title:${coupon.title.toLowerCase().replace(/\s+/g, " ").trim()}`;
+    if (key.length === 0 || seen.has(key)) continue;
+    seen.add(key);
+    kept.push(coupon);
+  }
+
+  return kept;
 }
 
 /**

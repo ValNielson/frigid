@@ -15,6 +15,7 @@ import {
   decodeEntities,
   dedupeIngredients,
   domainOf,
+  isNotShopping,
   isPantryStaple,
   normalizeQuery,
   normalizeUrl,
@@ -209,6 +210,46 @@ test("declared pantry staples are left off the list", () => {
   assert.ok(items.some((entry) => entry.includes("onion")));
   assert.equal(isPantryStaple("salt", ["Salt"]), true);
   assert.equal(isPantryStaple("chicken", ["Salt"]), false);
+});
+
+test("water, salt and pepper never reach the list, whatever the staples say", () => {
+  const recipes = [
+    {
+      name: "A",
+      ingredients: [
+        parseIngredientLine("4 cups water"),
+        parseIngredientLine("1 tsp kosher salt"),
+        parseIngredientLine("1/2 tsp freshly ground black pepper"),
+        parseIngredientLine("1 onion"),
+      ],
+    },
+  ];
+  const items = dedupeIngredients(recipes, departmentFor, []).map((e) => e.item);
+  assert.deepEqual(items, ["onion"]);
+});
+
+test("only the bare ingredient is dropped, not anything containing it", () => {
+  // An item goes only when every word in it is noise. A shopping list that
+  // loses its bell peppers is worse than one that carries salt.
+  assert.equal(isNotShopping("water"), true);
+  assert.equal(isNotShopping("Kosher Salt"), true);
+  assert.equal(isNotShopping("black peppers"), true);
+  assert.equal(isNotShopping("red pepper flakes"), false);
+  assert.equal(isNotShopping("bell pepper"), false);
+  assert.equal(isNotShopping("salted butter"), false);
+  assert.equal(isNotShopping("watermelon"), false);
+  assert.equal(isNotShopping("coconut water"), false);
+
+  // Both of these survived the first version of this rule in a live run, which
+  // is why it stopped enumerating phrases and started reading words.
+  assert.equal(isNotShopping("kosher salt and pepper"), true);
+  assert.equal(isNotShopping("cracked black pepper"), true);
+  assert.equal(isNotShopping("freshly ground black peppercorns"), true);
+  assert.equal(isNotShopping("room temperature water"), true);
+  // A modifier that names a real food keeps the line.
+  assert.equal(isNotShopping("fresh basil"), false);
+  assert.equal(isNotShopping("hot sauce"), false);
+  assert.equal(isNotShopping("ice cream"), false);
 });
 
 test("departments route the obvious cases and default to Pantry", () => {

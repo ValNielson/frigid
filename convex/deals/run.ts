@@ -16,6 +16,7 @@ import {
   matchesMetro,
   merchantSearchQuery,
   locationKey,
+  oneOfferPerItem,
   splitStores,
 } from "./policy";
 import { MAX_DEALS_PER_JOB } from "../recipePolicy";
@@ -525,12 +526,16 @@ export const finalize = internalAction({
       // email released. `ingredients` was already the job's shopping list, so
       // these picks are exactly the deals for that recipe.
       if (state.recipeJobId !== undefined) {
+        // One offer per subject, then cut to six. The model already ranked
+        // these, so the first of four carrot offers is the best of the four.
+        const forJob = oneOfferPerItem(
+          selection.picks.map((pick: SelectedPick) => pick.coupon),
+        ).slice(0, MAX_DEALS_PER_JOB);
+
         const names = await ctx.runQuery(
           internal.deals.data.merchantNamesByIds,
           {
-            merchantIds: selection.picks.map(
-              (pick: SelectedPick) => pick.coupon.merchantId,
-            ),
+            merchantIds: forJob.map((coupon: Candidate) => coupon.merchantId),
           },
         );
         const nameFor = new Map(
@@ -542,16 +547,14 @@ export const finalize = internalAction({
 
         await ctx.runMutation(internal.recipeJobs.setDeals, {
           jobId: state.recipeJobId,
-          deals: selection.picks
-            .slice(0, MAX_DEALS_PER_JOB)
-            .map((pick: SelectedPick) => ({
-              title: pick.coupon.title,
-              discount: pick.coupon.discount,
-              details: pick.coupon.details,
-              code: pick.coupon.code,
-              sourceUrl: pick.coupon.sourceUrl,
-              merchantName: nameFor.get(pick.coupon.merchantId),
-            })),
+          deals: forJob.map((coupon: Candidate) => ({
+            title: coupon.title,
+            discount: coupon.discount,
+            details: coupon.details,
+            code: coupon.code,
+            sourceUrl: coupon.sourceUrl,
+            merchantName: nameFor.get(coupon.merchantId),
+          })),
         });
       }
 
