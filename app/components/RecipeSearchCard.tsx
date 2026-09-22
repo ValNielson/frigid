@@ -345,17 +345,50 @@ function JobPanel({ job }: { job: Job }) {
 
           {/* An allergen drop is something the user deserves to be told about
               rather than a silent gap in the results. */}
-          {job.skipped.length > 0 ? (
+          {allergenDrops(job.skipped).length > 0 ? (
             <div className="rounded-[18px] bg-plum p-5 text-white">
               <span className="font-mono text-[11px] font-medium tracking-[0.14em] text-mint uppercase">
-                Set aside
+                Left out for your allergies
               </span>
-              <p className="mt-2.5 text-sm leading-relaxed">
-                We set aside {job.skipped.length}{" "}
-                {job.skipped.length === 1 ? "recipe" : "recipes"}:{" "}
-                {job.skipped.map((entry) => entry.reason.toLowerCase()).join(", ")}.
-              </p>
+              <ul className="mt-3 flex flex-col gap-3">
+                {allergenDrops(job.skipped).map((group) => (
+                  <li key={group.reason} className="text-sm leading-relaxed">
+                    <span className="font-medium">
+                      {group.reason}
+                      {group.urls.length > 1 ? ` \u00b7 ${group.urls.length} recipes` : ""}
+                    </span>
+                    <span className="mt-0.5 block text-[13px] text-mint">
+                      {group.urls.map((url, i) => (
+                        <span key={url}>
+                          {i > 0 ? ", " : ""}
+                          <a
+                            href={url}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="underline-offset-4 hover:underline"
+                          >
+                            {hostOf(url)}
+                          </a>
+                        </span>
+                      ))}
+                    </span>
+                  </li>
+                ))}
+              </ul>
             </div>
+          ) : null}
+
+          {/* Everything else is a page that would not parse. That is our
+              problem, not a fact about the food, so it stays a footnote rather
+              than sharing the treatment reserved for an allergy. */}
+          {unreadable(job.skipped).length > 0 ? (
+            <p className="text-[13px] leading-relaxed text-muted">
+              {unreadable(job.skipped).length}{" "}
+              {unreadable(job.skipped).length === 1 ? "other page" : "other pages"} on{" "}
+              {[...new Set(unreadable(job.skipped).map((e) => hostOf(e.url)))].join(", ")}{" "}
+              did not publish an ingredient list we could read, so they are not in
+              this list.
+            </p>
           ) : null}
         </div>
       </div>
@@ -400,6 +433,37 @@ function StoreLink({
     );
   }
   return <span className="mt-0.5 block text-[13px] text-muted">Try {store.storeLabel}</span>;
+}
+
+/**
+ * The skipped list has two kinds of entry in it, and they are not the same news.
+ *
+ * A recipe dropped for an allergen is the product keeping the promise it makes
+ * in writing, and the user should see it. A page whose ingredients would not
+ * parse is our failure, and says nothing about their food.
+ *
+ * Showing both in one dark callout was what made a perfectly good result read
+ * as an error — and listing each entry raw repeated the same sentence once per
+ * recipe, "we could not read an ingredient list, we could not read an
+ * ingredient list", which says nothing twice and names no site.
+ */
+const isAllergenDrop = (reason: string) => reason.startsWith("Contains");
+
+/** Allergen drops, one line per allergen, carrying the sites it applied to. */
+function allergenDrops(skipped: Job["skipped"]) {
+  const byReason = new Map<string, string[]>();
+  for (const entry of skipped) {
+    if (!isAllergenDrop(entry.reason)) continue;
+    const urls = byReason.get(entry.reason);
+    if (urls === undefined) byReason.set(entry.reason, [entry.url]);
+    else urls.push(entry.url);
+  }
+  return [...byReason.entries()].map(([reason, urls]) => ({ reason, urls }));
+}
+
+/** The rest: pages we could not read, reported as a footnote. */
+function unreadable(skipped: Job["skipped"]) {
+  return skipped.filter((entry) => !isAllergenDrop(entry.reason));
 }
 
 /** Bare host, so a skipped recipe is identifiable without a wall of URL. */

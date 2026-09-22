@@ -212,6 +212,19 @@ test("declared pantry staples are left off the list", () => {
   assert.equal(isPantryStaple("chicken", ["Salt"]), false);
 });
 
+test("a hyphenated ingredient is not mistaken for a unit", () => {
+  // "ribs?" is a unit, for "3 ribs celery". A hyphen is a word boundary, so a
+  // `\b` after the unit matched the "rib" inside "rib-eye" and a live shopping
+  // list ended up carrying an item called "-eye".
+  assert.equal(parseIngredientLine("1 lb rib-eye steak").item, "rib-eye steak");
+  assert.equal(parseIngredientLine("2 rib-eyes").item, "rib-eyes");
+  assert.equal(parseIngredientLine("1 large-flake sea salt").item, "large-flake sea salt");
+  // The unit still goes when it really is one.
+  assert.equal(parseIngredientLine("3 ribs celery").item, "celery");
+  assert.equal(parseIngredientLine("2 stalks celery").item, "celery");
+  assert.equal(parseIngredientLine("1 lb ground beef").item, "beef");
+});
+
 test("water, salt and pepper never reach the list, whatever the staples say", () => {
   const recipes = [
     {

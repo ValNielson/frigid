@@ -3,7 +3,7 @@
 - **Project:** frigid
 - **Event:** Convex All Gas Hackathon
 - **What it does:** An all-in-one hub for recipes and ingredients, per the repository README.
-- **Live app:** not deployed
+- **Live app:** https://cheerful-buzzard-131.convex.site
 - **Repo:** https://github.com/ValNielson/frigid
 - **Frontend:** Convex static hosting
 - **Convex deployment:** https://cheerful-buzzard-131.convex.cloud
@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-22T17:38:04Z
+- **Last updated:** 2026-09-22T18:56:10Z
 
 ## Log
 
@@ -881,7 +881,7 @@ remains unavailable. Worth noting for whoever runs it that the production
 database is empty — none of the cached recipes, coupons or profiles used in
 testing exist there, so the first search on the live link is a cold start.
 
-### 2026-09-22 - working tree
+### 2026-09-22 - d50a5f2
 Fixed the production site serving "No matching routes found" on every page. The
 first deploy pushed the backend and uploaded the files successfully, and nothing
 was serving them: `convex.config.ts` registers the component as
@@ -907,3 +907,75 @@ live. `AGENTMAIL_WEBHOOK_SECRET` is still absent, so the delivery-visibility gap
 from yesterday applies there too. The production database is empty, so the first
 search on the live link is a cold start with none of the cached recipes or
 coupons that testing built up on dev.
+
+### 2026-09-22 - working tree
+The site is live at https://cheerful-buzzard-131.convex.site — root, `/home`
+and `/unsubscribe` all answer 200, and every chunk the page loads names
+`cheerful-buzzard-131.convex.cloud`, so the published bundle is talking to
+production rather than to dev.
+
+Copied the dev database into production as a snapshot, because production was
+cold and could not warm itself: the Firecrawl account is out of credits for the
+month, so a first search there had no way to succeed. A zip snapshot rather than
+per-table JSON, since coupons reference merchants by id and only the snapshot
+path preserves them. 610 documents. Verified through the real query path instead
+of row counts — the user id survived, `merchantsByDomains` resolves all three
+chains, and `couponsForUser` returns 224 live Canton coupons. 24 cached recipes
+and 31 cached pages came with it, so previously-run searches cost nothing there.
+The one session row will not resolve, since it was hashed with the dev pepper;
+signing in again mints a valid one.
+
+Two problems surfaced by testing on the live link, neither fixed here.
+
+Firecrawl is exhausted, and the budget could not have prevented it. The daily
+120-credit brake reads `creditLedger`, which is a table, so each deployment
+keeps its own — dev and prod each believed they had a full day's allowance while
+drawing on one shared account. This is the same shape as the bug fixed on
+2026-09-14 by putting both pipelines on one ledger; it has recurred a level up,
+between deployments, and one deployment cannot see another's spending.
+
+The recipe search pays to scrape articles. A live search for "Find me a soup
+with mushrooms" spent 7 credits and returned one recipe: of five pages scraped,
+four were editorial — an Oreo review, an apple dessert piece, a Costco churro
+news post, and a bacon-versus-sausage article — all on allowlisted domains, none
+carrying a recipe. "We could not read an ingredient list" was literally
+accurate. `scoreCandidate` ranks candidates but never rejects one, so a page
+sharing no word with the prompt still gets scraped. `LOOKS_LIKE_ROUNDUP` catches
+roundups and `NOT_A_PRODUCT` guards store searches, but nothing rejects
+editorial content on a recipe site.
+
+`AGENTMAIL_WEBHOOK_SECRET` is still unset on production, so the delivery
+blindness recorded yesterday applies to the live app.
+
+Three fixes after clicking through the live site.
+
+Store links. The Aldi and Wegmans search URLs both answered 404, so every item
+on a shopping list linked into a dead page for anyone shopping at either. Aldi
+is now `/store/aldi/s?k=` and Wegmans `/shop/search?search_term=`, both checked
+by hand. All fourteen entries were re-checked with a browser user agent while
+there: Kroger, Meijer and Trader Joe's answer a bot wall rather than a page,
+which is their defence against scripts and not a broken link. The comment above
+the catalogue claimed these links "always resolve" — corrected, since retailers
+move a search route and only a 404 proves it moved (`convex/recipeCatalog.ts`).
+
+An ingredient called "-eye". `ribs?` is a unit, for "3 ribs celery", and the
+unit stripper ended in `\b` — but a hyphen is a word boundary, so "1 lb rib-eye
+steak" matched "rib" as a unit and left "-eye" on the shopping list. The three
+places a unit is matched now end in `(?![\w-])`: a unit counts only when what
+follows is not more of the same word. "3 ribs celery" still reduces to celery
+(`convex/recipeText.ts`). Second bug of the day from matching fragments instead
+of whole words — the salt and pepper filter failed the same way this morning.
+
+What "set aside" is for. The panel existed to report an allergy drop, which is
+the product keeping a promise it makes in writing. It was also being handed the
+pages whose ingredients would not parse, which is our failure and says nothing
+about anyone's food, and both went into the same dark callout — so a good
+result read as an error, listing "we could not read an ingredient list" once per
+recipe with no site named. Allergy drops keep the callout, now grouped per
+allergen with the sites that tripped it; unreadable pages became a grey footnote
+(`app/components/RecipeSearchCard.tsx`).
+
+Tests 201. Typecheck, lint and a static export build all clean. None of this has
+been deployed, so the live site still has the dead store links and the old
+panel. The email still says nothing about set-aside recipes at all, which is
+arguably where an allergy drop matters most.

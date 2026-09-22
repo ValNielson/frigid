@@ -151,6 +151,17 @@ const UNITS = [
 
 const QUANTITY = String.raw`\d+(?:[./]\d+)?(?:\s*[-–to]+\s*\d+(?:[./]\d+)?)?`;
 
+/**
+ * What must follow a unit for it to be a unit.
+ *
+ * `\b` is wrong here, because a hyphen is a word boundary: "ribs?" matched the
+ * "rib" inside "rib-eye" and a live shopping list carried an item called
+ * "-eye". A unit is only a unit when the next thing is not more of the same
+ * word, so anything but a letter, digit or hyphen ends it. "3 ribs celery"
+ * still loses its unit; "1 lb rib-eye steak" keeps its steak.
+ */
+const UNIT_END = String.raw`(?![\w-])`;
+
 /** Prep words that describe what you do to a thing, not which thing to buy. */
 const PREP_WORDS = new Set([
   "chopped", "diced", "minced", "sliced", "grated", "shredded", "crushed",
@@ -224,7 +235,7 @@ export function parseIngredientLine(rawLine: string): Ingredient {
   working = segments.join(" ");
 
   const quantityMatch = new RegExp(
-    String.raw`^\s*(${QUANTITY}(?:\s+${QUANTITY})?)\s*(?:(${UNITS})\b)?`,
+    String.raw`^\s*(${QUANTITY}(?:\s+${QUANTITY})?)\s*(?:(${UNITS})${UNIT_END})?`,
     "i",
   ).exec(working);
 
@@ -234,11 +245,11 @@ export function parseIngredientLine(rawLine: string): Ingredient {
     working = working.slice(quantityMatch[0].length);
   } else {
     // No leading number, but "a pinch of salt" style units still lead.
-    working = working.replace(new RegExp(String.raw`^\s*(?:${UNITS})\b`, "i"), " ");
+    working = working.replace(new RegExp(String.raw`^\s*(?:${UNITS})${UNIT_END}`, "i"), " ");
   }
 
   // Sizes and containers stack: "3 medium stalks celery" leads with two units.
-  const leadingUnit = new RegExp(String.raw`^\s*(?:${UNITS})\b`, "i");
+  const leadingUnit = new RegExp(String.raw`^\s*(?:${UNITS})${UNIT_END}`, "i");
   for (let i = 0; i < 3 && leadingUnit.test(working); i += 1) {
     working = working.replace(leadingUnit, " ");
   }

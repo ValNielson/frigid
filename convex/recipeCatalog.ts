@@ -91,11 +91,20 @@ const q = (s: string) => encodeURIComponent(s);
  * order, so "the user's top store" is well defined.
  *
  * `search` builds a link into the store's own search results rather than a
- * product page. That always resolves, needs no scraping, and does not go stale
- * the way a deep link to a single SKU would.
+ * product page. That needs no scraping and does not go stale the way a deep
+ * link to a single SKU would — but it does not "always resolve", which is what
+ * the first version of this comment claimed. Retailers move their search route
+ * and the old one starts serving a 404, which is what Aldi and Wegmans were
+ * both doing when someone clicked a link in a shopping list.
+ *
+ * Every URL here was checked by hand on 2026-09-22 with a browser user agent.
+ * Kroger, Meijer and Trader Joe's answer a bot wall (403, or a refused
+ * connection) rather than a page; that is their defence against scripts, not a
+ * broken link, and those three open normally in a real browser. Re-check the
+ * ones that return a 404, since only that means the route has actually moved.
  */
 export const STORE_CATALOG: readonly StoreEntry[] = [
-  { slug: "aldi", label: "Aldi", domain: "aldi.us", search: (s) => `https://www.aldi.us/results?q=${q(s)}` },
+  { slug: "aldi", label: "Aldi", domain: "aldi.us", search: (s) => `https://www.aldi.us/store/aldi/s?k=${q(s)}` },
   { slug: "costco", label: "Costco", domain: "costco.com", search: (s) => `https://www.costco.com/s?keyword=${q(s)}` },
   { slug: "kroger", label: "Kroger", domain: "kroger.com", search: (s) => `https://www.kroger.com/search?query=${q(s)}` },
   { slug: "meijer", label: "Meijer", domain: "meijer.com", search: (s) => `https://www.meijer.com/shopping/search.html?text=${q(s)}` },
@@ -106,7 +115,7 @@ export const STORE_CATALOG: readonly StoreEntry[] = [
   { slug: "publix", label: "Publix", domain: "publix.com", search: (s) => `https://www.publix.com/search?query=${q(s)}` },
   { slug: "safeway", label: "Safeway or Albertsons", domain: "safeway.com", search: (s) => `https://www.safeway.com/shop/search-results.html?q=${q(s)}` },
   { slug: "heb", label: "H-E-B", domain: "heb.com", search: (s) => `https://www.heb.com/search?q=${q(s)}` },
-  { slug: "wegmans", label: "Wegmans", domain: "wegmans.com", search: (s) => `https://shop.wegmans.com/search?search_term=${q(s)}` },
+  { slug: "wegmans", label: "Wegmans", domain: "wegmans.com", search: (s) => `https://shop.wegmans.com/shop/search?search_term=${q(s)}` },
   // No national catalog to search. They still get named in the email, which is
   // the useful part — "the co-op probably has this" beats a broken link.
   { slug: "co-op", label: "Local co-op or farmers market", domain: null, search: null },
