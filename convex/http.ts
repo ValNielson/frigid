@@ -84,6 +84,26 @@ http.route({
  * unsubscribe people who never clicked.
  * ------------------------------------------------------------------------ */
 
+/**
+ * The shell both unsubscribe screens render into.
+ *
+ * Deliberately a hand-written page rather than anything from `app/`: this is
+ * served by Convex's HTTP router straight from a mail client, with no React and
+ * no bundle, which is the whole reason the route lives here. That means the
+ * design tokens have to be repeated by hand, and it is why this page spent a
+ * while on an older blue-and-orange palette that shared no colour with the app.
+ *
+ * The values below are copied from `app/globals.css` and `app/lib/formClasses`:
+ * the mint wash, the 22px white card with its plum shadow, the deep-teal pill
+ * that goes plum on hover. Keep them in step when the app's palette moves.
+ *
+ * Light only, because the app is. `color-scheme: light` stops a dark-mode
+ * browser tinting the form control and leaving one element off-brand.
+ *
+ * The logo is served by the static-hosting catch-all on this same origin, so it
+ * costs no extra configuration — but it is only there once a frontend has been
+ * deployed, hence the alt text carrying the name on its own.
+ */
 function page(title: string, body: string): Response {
   const html = `<!doctype html>
 <html lang="en">
@@ -92,40 +112,56 @@ function page(title: string, body: string): Response {
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <title>${escapeHtml(title)} · frigid</title>
     <style>
-      :root { color-scheme: light dark; }
+      :root { color-scheme: light; }
       body {
         margin: 0; min-height: 100vh; display: grid; place-items: center;
-        padding: 24px; background: #f4f8fb; color: #0f1b24;
-        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif;
+        padding: 24px; color: #554348;
+        background: #fafbfb;
+        background-image: linear-gradient(180deg, #d4f5f5 0%, #fafbfb 62%);
+        background-repeat: no-repeat;
+        /* The app's Geist is self-hosted by next/font at a hashed path this
+           page cannot reference, and fetching it from Google here would add a
+           third-party request at the exact moment someone is opting out. The
+           system stack is the closer call: SF Pro and Segoe UI are both
+           neutral grotesques and read near enough at this size. */
+        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
+          Helvetica, Arial, sans-serif;
+        -webkit-font-smoothing: antialiased;
       }
       .card {
-        width: 100%; max-width: 420px; background: #fff; border: 1px solid #dbe7ef;
-        border-radius: 16px; padding: 32px; text-align: left;
+        width: 100%; max-width: 420px; background: #fff;
+        border-radius: 22px; padding: 32px; text-align: left;
+        box-shadow: 0 6px 24px rgba(85, 67, 72, 0.08);
       }
-      .brand {
-        margin: 0 0 8px; font-size: 12px; letter-spacing: .08em;
-        text-transform: uppercase; color: #5d7c8f;
+      .logo { display: block; height: 44px; width: auto; margin: 0 0 20px; }
+      h1 {
+        margin: 0 0 10px; font-size: 24px; line-height: 1.25;
+        font-weight: 600; letter-spacing: -0.02em;
       }
-      h1 { margin: 0 0 12px; font-size: 21px; line-height: 1.3; }
-      p { margin: 0 0 20px; font-size: 15px; line-height: 1.6; color: #3d5666; }
-      .email { font-weight: 600; color: #0f1b24; overflow-wrap: anywhere; }
+      p { margin: 0 0 22px; font-size: 15px; line-height: 1.6; color: #6a6b6e; }
+      /* The confirmation screen ends on a button; the done screen ends on this
+         paragraph, and its trailing margin was padding the card out. */
+      p:last-child { margin-bottom: 0; }
+      .email { font-weight: 600; color: #554348; overflow-wrap: anywhere; }
       button {
         appearance: none; border: 0; border-radius: 999px; cursor: pointer;
-        background: #ef7c2f; color: #fff; font-size: 15px; font-weight: 600;
-        padding: 12px 22px; width: 100%;
+        background: #46747e; color: #fff; font-size: 16px; font-weight: 600;
+        padding: 12px 24px; width: 100%; transition: background .15s ease;
+        font-family: inherit;
       }
-      button:hover { background: #d96a20; }
-      @media (prefers-color-scheme: dark) {
-        body { background: #08131a; color: #e6f2f8; }
-        .card { background: #0f2029; border-color: #1d3945; }
-        p { color: #9fbccb; }
-        .email { color: #e6f2f8; }
-      }
+      button:hover { background: #554348; }
+      button:focus-visible { outline: 2px solid #46747e; outline-offset: 2px; }
+      .fine { margin: 18px 0 0; font-size: 13px; color: #66757a; }
     </style>
   </head>
   <body>
     <main class="card">
-      <p class="brand">frigid</p>
+      <!-- Served by the static-hosting catch-all on this origin, so it is only
+           there once a frontend has been deployed — a backend-only deployment
+           404s it. Removing itself on error beats a broken-image box in a
+           stranger's mail client. -->
+      <img class="logo" src="/frigid-logo.png" alt="frigid"
+           onerror="this.remove()" />
       ${body}
     </main>
   </body>

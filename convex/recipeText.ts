@@ -470,6 +470,52 @@ export function containsAllergen(
 }
 
 /** Ranks a search result before we spend a credit scraping it. */
+/**
+ * A blob of text as its whole words, singularized.
+ *
+ * Whole words, because a substring test scored "nut" against the "minutes" in
+ * "on the table in 30 minutes" — so a search for "nut free carrot cake" rated a
+ * garlic butter chicken a three-point match on its cooking time, and shipped it.
+ * Phrase checks elsewhere stay substring tests: a phrase like "American
+ * comfort" cannot collide the same way.
+ */
+function wordsOf(text: string): Set<string> {
+  return new Set(
+    text
+      .toLowerCase()
+      .replace(/[^a-z0-9\s]/g, " ")
+      .split(/\s+/)
+      .filter((word) => word.length > 0)
+      .map(singular),
+  );
+}
+
+/**
+ * Whether a search result is plausibly about the thing that was asked for.
+ *
+ * Ranking alone never rejected anything, so the worst candidate on the page was
+ * still scraped once the better ones ran out — which is how a search for a
+ * mushroom soup paid to read a Costco churro news post, an Oreo review, and a
+ * bacon-versus-sausage explainer. Sharing no word at all with the prompt is a
+ * low bar, and clearing it is the difference between a recipe and an article
+ * that happens to live on a recipe site.
+ *
+ * A prompt with no significant words of its own passes everything, rather than
+ * rejecting the entire page.
+ */
+export function sharesPromptWord(
+  candidate: { title: string; description?: string },
+  prompt: string,
+): boolean {
+  const tokens = normalizeQuery(prompt)
+    .split(" ")
+    .filter((token) => token.length > 2);
+  if (tokens.length === 0) return true;
+
+  const words = wordsOf(`${candidate.title} ${candidate.description ?? ""}`);
+  return tokens.some((token) => words.has(singular(token)));
+}
+
 export function scoreCandidate(
   candidate: { url: string; title: string; description?: string },
   prompt: string,
@@ -478,8 +524,10 @@ export function scoreCandidate(
   const haystack = `${candidate.title} ${candidate.description ?? ""}`.toLowerCase();
   let score = 0;
 
+  const words = wordsOf(haystack);
+
   for (const token of normalizeQuery(prompt).split(" ")) {
-    if (token.length > 2 && haystack.includes(token)) score += 3;
+    if (token.length > 2 && words.has(singular(token))) score += 3;
   }
   for (const cuisine of answers["cuisinesLove"]?.choices ?? []) {
     if (haystack.includes(cuisine.toLowerCase())) score += 2;

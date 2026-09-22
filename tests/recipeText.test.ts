@@ -21,6 +21,7 @@ import {
   normalizeUrl,
   parseIngredientLine,
   scoreCandidate,
+  sharesPromptWord,
   slugifyItem,
 } from "../convex/recipeText.ts";
 import { departmentFor } from "../convex/recipeCatalog.ts";
@@ -210,6 +211,37 @@ test("declared pantry staples are left off the list", () => {
   assert.ok(items.some((entry) => entry.includes("onion")));
   assert.equal(isPantryStaple("salt", ["Salt"]), true);
   assert.equal(isPantryStaple("chicken", ["Salt"]), false);
+});
+
+test("a prompt word only counts as a whole word", () => {
+  // "nut free carrot cake" returned a chicken recipe. The scorer tested
+  // `haystack.includes(token)`, and "nut" is inside "minutes" — which appears
+  // in the description of almost every weeknight recipe ever written.
+  const chicken = {
+    url: "https://www.delish.com/chicken",
+    title: "30-Minute Garlic Butter Chicken",
+    description: "On the table in 30 minutes.",
+  };
+  const cake = {
+    url: "https://www.sallysbakingaddiction.com/carrot-cake",
+    title: "Carrot Cake",
+    description: "A moist carrot cake with cream cheese frosting.",
+  };
+
+  assert.equal(scoreCandidate(chicken, "nut free carrot cake", {}), 0);
+  assert.ok(
+    scoreCandidate(cake, "nut free carrot cake", {}) >
+      scoreCandidate(chicken, "nut free carrot cake", {}),
+  );
+
+  // Ranking alone never rejected anything, so a zero-scoring candidate was
+  // still scraped once the better ones ran out. Sharing no word with the
+  // prompt is the bar.
+  assert.equal(sharesPromptWord(chicken, "nut free carrot cake"), false);
+  assert.equal(sharesPromptWord(cake, "nut free carrot cake"), true);
+  // Plurals still count, and a prompt with nothing to match on rejects nobody.
+  assert.equal(sharesPromptWord({ title: "Carrots" }, "carrot cake"), true);
+  assert.equal(sharesPromptWord(chicken, "something for me"), true);
 });
 
 test("a hyphenated ingredient is not mistaken for a unit", () => {

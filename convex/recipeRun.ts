@@ -54,6 +54,7 @@ import {
   normalizeUrl,
   parseIngredientLine,
   scoreCandidate,
+  sharesPromptWord,
   slugifyItem,
   type Ingredient,
 } from "./recipeText";
@@ -129,7 +130,17 @@ export const search = internalAction({
         );
       });
 
-      const byScore = [...allowed].sort(
+      // Rank only what could plausibly be the dish. Ranking never rejected
+      // anything, so once the good candidates ran out the pipeline paid to
+      // scrape whatever was left — four editorial pages in one live run. Falls
+      // back to the full list when nothing clears the bar, so a thin result set
+      // still gets its chance rather than failing outright.
+      const onTopic = allowed.filter((result) =>
+        sharesPromptWord(result, job.prompt),
+      );
+      const pool = onTopic.length > 0 ? onTopic : allowed;
+
+      const byScore = [...pool].sort(
         (a, b) =>
           scoreCandidate(b, job.prompt, job.answers) -
           scoreCandidate(a, job.prompt, job.answers),

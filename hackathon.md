@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-22T18:58:00Z
+- **Last updated:** 2026-09-22T20:14:21Z
 
 ## Log
 
@@ -979,3 +979,36 @@ Tests 201. Typecheck, lint and a static export build all clean. None of this has
 been deployed, so the live site still has the dead store links and the old
 panel. The email still says nothing about set-aside recipes at all, which is
 arguably where an allergy drop matters most.
+
+### 2026-09-22 - working tree
+A search for "nut free carrot cake" returned a garlic butter chicken.
+`scoreCandidate` tested relevance with `haystack.includes(token)`, and "nut" is
+inside "minutes" — which appears in the description of nearly every weeknight
+recipe, so the chicken scored a three-point match on its cooking time. Confirmed
+as a failing test before anything was touched. Scoring now compares whole
+singularized words; the multi-word phrase checks stay substring tests, since
+"American comfort" cannot collide the same way (`convex/recipeText.ts`).
+
+That is the third bug today from matching a fragment where a whole word was
+meant — "rib" inside "rib-eye", the salt and pepper filter, and now this. Worth
+naming as a pattern rather than three unrelated fixes.
+
+Also added the relevance bar the mushroom soup run argued for. Ranking never
+rejected a candidate, so once the good ones ran out the pipeline paid to scrape
+whatever was left. A candidate now has to share at least one whole word with the
+prompt, falling back to the full list when nothing clears it, so a thin result
+set still gets its chance instead of failing outright (`convex/recipeRun.ts`).
+
+Redesigned the unsubscribe screens, which were still on an older blue and orange
+palette sharing no colour at all with the app. They now use the app's own tokens
+— the mint wash, the 22px white card and its plum shadow, the deep teal pill
+that goes plum on hover — plus the logo, which the static-hosting catch-all
+serves from the same origin and which removes itself on a backend-only
+deployment where it 404s. Light only, because the app is. A system font stack
+rather than fetching Geist from Google: the page is a hand-written string served
+by the HTTP router with no bundle, and adding a third-party request at the
+moment someone opts out is the wrong trade (`convex/http.ts`).
+
+Tests 202, typecheck and lint clean. Nothing here is deployed. Still open: the
+emails in `convex/emailShell.ts` and `convex/recipeEmail.ts` remain on that same
+old palette, so the mail is off-brand even though the site is not.
