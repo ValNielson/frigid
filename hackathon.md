@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-22T18:56:10Z
+- **Last updated:** 2026-09-22T18:58:00Z
 
 ## Log
 
@@ -908,7 +908,7 @@ from yesterday applies there too. The production database is empty, so the first
 search on the live link is a cold start with none of the cached recipes or
 coupons that testing built up on dev.
 
-### 2026-09-22 - working tree
+### 2026-09-22 - c99f80c
 The site is live at https://cheerful-buzzard-131.convex.site — root, `/home`
 and `/unsubscribe` all answer 200, and every chunk the page loads names
 `cheerful-buzzard-131.convex.cloud`, so the published bundle is talking to
