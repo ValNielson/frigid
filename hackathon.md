@@ -6,14 +6,14 @@
 - **Live app:** not deployed
 - **Repo:** https://github.com/ValNielson/frigid
 - **Frontend:** Convex static hosting
-- **Convex deployment:** not deployed
+- **Convex deployment:** https://cheerful-buzzard-131.convex.cloud
 - **Components:** @convex-dev/static-hosting
 - **Convex features:** schema, tables, indexes, queries, mutations, actions, HTTP
   actions, crons, scheduled functions, realtime queries
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-21T18:13:24Z
+- **Last updated:** 2026-09-22T17:38:04Z
 
 ## Log
 
@@ -796,7 +796,7 @@ Still open. The rate limiter turned away five of the ten merchants it wanted
 partial rather than as full coverage of the city. Nothing here is committed, and
 none of it has run against the production deployment.
 
-### 2026-09-21 - working tree
+### 2026-09-21 - f99bc39
 Made the deploy path actually work and cleared the rough edges a demo would
 show. The frontend now builds as a static export (`output: "export"`, images
 unoptimized) into `out/`, and `npm run deploy` points the static-hosting CLI at
@@ -862,5 +862,48 @@ cream" pulled in ice cream, "juice of 1 lemon" pulled in orange juice, and
 does not block the match. Tightening that is a change to the matcher rather than
 a patch, and it is not attempted here.
 
-Not committed, and the frontend is still not published — the live app remains
-unavailable.
+One correction to the run above. The job row records `emailed: true`, which only
+means AgentMail's API accepted the message — it is not delivery. Chasing a
+report that nothing arrived turned up the real gap: `agentmailEvents` holds zero
+rows and always has, because `AGENTMAIL_WEBHOOK_SECRET` is unset and
+`convex/http.ts` throws on `requireEnv` before it can file anything. So there is
+no record of a delivery, a bounce or a complaint anywhere in the system. A
+direct send returns a Amazon SES message id, so mail does leave our side; past
+that the app is blind. This was logged earlier as a minor gap affecting inbound
+mail only, which understated it.
+
+Production secrets are now set — five required variables plus `FIRECRAWL_MODE`
+live, confirmed by listing the prod environment. `AGENTMAIL_WEBHOOK_SECRET` is
+not among them, so the gap above applies there too. The deploy itself has not
+run: `npm run deploy` builds and reaches the backend push, which asks for
+interactive confirmation. The frontend is still not published and the live app
+remains unavailable. Worth noting for whoever runs it that the production
+database is empty — none of the cached recipes, coupons or profiles used in
+testing exist there, so the first search on the live link is a cold start.
+
+### 2026-09-22 - working tree
+Fixed the production site serving "No matching routes found" on every page. The
+first deploy pushed the backend and uploaded the files successfully, and nothing
+was serving them: `convex.config.ts` registers the component as
+`app.use(staticHosting)` with no `httpPrefix`, which is the mode that leaves
+`convex/http.ts` in charge of the root, and that mode requires a
+`registerStaticRoutes(http, components.staticHosting)` the setup never added. So
+the component existed, held the files, and was reachable by nothing. Registered
+it last in the router, since exact routes win over the catch-all and that
+ordering is what keeps the two app routes working (`convex/http.ts`).
+
+Keeping app-owned root routing rather than switching to the component-owned mode
+is deliberate: `/unsubscribe` is in every email already sent, and
+`/agentmail/webhook` is configured on AgentMail's side. The alternative moves
+both under `/api`.
+
+Verified on the dev deployment, where the root went from a router 404 to the
+component's own placeholder page — mounted, with no files uploaded there — while
+`/unsubscribe` kept answering 200. Production still returns the 404 until the
+deploy is re-run. Tests 200, typecheck and lint clean.
+
+Production secrets are set: the five required variables plus `FIRECRAWL_MODE`
+live. `AGENTMAIL_WEBHOOK_SECRET` is still absent, so the delivery-visibility gap
+from yesterday applies there too. The production database is empty, so the first
+search on the live link is a cold start with none of the cached recipes or
+coupons that testing built up on dev.

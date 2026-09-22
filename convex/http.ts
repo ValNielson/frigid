@@ -1,7 +1,8 @@
 import { httpRouter } from "convex/server";
 import { Webhook } from "svix";
+import { registerStaticRoutes } from "@convex-dev/static-hosting";
 import { httpAction } from "./_generated/server";
-import { internal } from "./_generated/api";
+import { components, internal } from "./_generated/api";
 import { requireEnv } from "./env";
 import { escapeHtml } from "./emailShell";
 
@@ -191,5 +192,21 @@ http.route({
     return donePage();
   }),
 });
+
+/**
+ * The static site, as a catch-all underneath everything above.
+ *
+ * `convex.config.ts` registers the component without an `httpPrefix`, which is
+ * the mode that leaves this router in charge of the root — chosen so
+ * `/unsubscribe` and `/agentmail/webhook` keep the URLs already sitting in
+ * people's inboxes and in AgentMail's webhook config. The cost of that mode is
+ * this line, and without it the component is registered but never mounted:
+ * every path except the two above answers "no matching routes found", which is
+ * exactly what the first production deploy did.
+ *
+ * Registered last on purpose. Exact routes win over the catch-all, so the order
+ * here is what keeps the two app routes reachable.
+ */
+registerStaticRoutes(http, components.staticHosting);
 
 export default http;
