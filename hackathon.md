@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-22T20:14:21Z
+- **Last updated:** 2026-09-22T20:35:21Z
 
 ## Log
 
@@ -980,7 +980,7 @@ been deployed, so the live site still has the dead store links and the old
 panel. The email still says nothing about set-aside recipes at all, which is
 arguably where an allergy drop matters most.
 
-### 2026-09-22 - working tree
+### 2026-09-22 - fb36b79
 A search for "nut free carrot cake" returned a garlic butter chicken.
 `scoreCandidate` tested relevance with `haystack.includes(token)`, and "nut" is
 inside "minutes" — which appears in the description of nearly every weeknight
@@ -1012,3 +1012,59 @@ moment someone opts out is the wrong trade (`convex/http.ts`).
 Tests 202, typecheck and lint clean. Nothing here is deployed. Still open: the
 emails in `convex/emailShell.ts` and `convex/recipeEmail.ts` remain on that same
 old palette, so the mail is off-brand even though the site is not.
+
+### 2026-09-22 - working tree
+The "Plan five dinners" starter failed every time it was used, and today it was
+run live: four pages scraped, none readable, job failed. All four were
+collections — a Bon Appetit gallery, two Kitchn roundups and a Kitchn meal plan.
+
+Two things were wrong. `LOOKS_LIKE_ROUNDUP` exists to reject exactly these
+before a credit is spent and caught none of them, because every keyword in it
+was anchored to the end of the path, which is where a roundup keyword never
+sits; `galleries` was listed but not `gallery`. It now matches section paths, a
+path segment opening with a count — "40-easy-dinner-recipes", "5-nights-of-easy
+-dinners", since counting is what a listicle does — and the plurals anywhere in
+the path. Singular "-recipe-" is deliberately excluded, because that is how
+Kitchn names a single recipe, and "-ideas" stays end-anchored because Delish
+files individual recipes under `/cooking/recipe-ideas/`. Tested both ways: the
+four real roundups rejected, seven real single-recipe shapes kept
+(`convex/recipeCatalog.ts`).
+
+The filter alone would only have made that starter fail sooner and cheaper. The
+prompt itself, "five weeknight dinners for two", is one the product cannot
+serve: it searches for a dish and reads one recipe per page, so a request
+phrased as a plan can only return listicles. The starter is now "Plan the week"
+with the prompt "easy chicken dinners for two" — a search already returns
+several recipes, so planning a week is what a dish prompt does anyway
+(`app/components/RecipeSearchCard.tsx`).
+
+Tests 204, typecheck and lint clean. Not deployed.
+
+Then checked the rest of the starters rather than waiting for the next one to
+fail in front of someone. Replayed each prompt, and the placeholder, against
+verbatim Firecrawl results pulled from `searchCache` — real search output rather
+than invented URLs, which is the only way to test this while the Firecrawl
+account is out of credits.
+
+Two more problems. A Delish gallery was still being kept as a recipe: Hearst
+sites file galleries under `/g<id>/` and single recipes under `/a<id>/`, and the
+rule demanded five or more digits, so `/g71297511/` was caught while `/g3053/`
+and `/g4627/` were not. Now three or more. And "Something quick" carried the
+prompt "a vegetarian dinner in under 30 minutes", which built the query
+"vegetarian dinner under 30 minutes quick recipe" — "30", "minutes" and "under"
+searched as though they were foods, and "quick" duplicated the term the
+profile's weeknight-time answer already contributes. It now names a dish.
+
+Added `tests/starterPrompts.test.ts`, which is what was missing when the broken
+starter shipped: it asserts every prompt builds a query with no bare numbers and
+no meal-plan phrasing, and that the recorded real result sets still yield at
+least two usable recipes once the allowlist, roundup and relevance filters have
+run. Tests 207, typecheck, lint and a static export build all clean.
+
+The measurements are worth recording on their own. Of ten search results,
+usually five or six are on the allowlist and roundups take about half of those,
+leaving two or three candidates against a target of four recipes — which is the
+real reason finished jobs have carried between one and four. Raising
+`SEARCH_LIMIT` from ten to twenty would fix it, and Firecrawl bills per ten
+results, so it roughly doubles the cost of every search. Deliberately not done
+while the account is at zero.

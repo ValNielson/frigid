@@ -26,11 +26,25 @@ const ORDER = [
   "done",
 ];
 
-/** One-tap starters that fill the composer rather than sending on their own. */
+/**
+ * One-tap starters that fill the composer rather than sending on their own.
+ *
+ * Every one names food. That is not a style choice: the pipeline searches for a
+ * dish and reads one recipe per page, so a prompt phrased as a plan — "five
+ * weeknight dinners for two" — returns listicles, and a listicle carries no
+ * single recipe to read. That starter failed every time it was used, and the
+ * four pages it bought were a gallery, two collections and a meal plan.
+ *
+ * A search already returns several recipes, so "plan the week" is what the
+ * product does with a dish prompt anyway.
+ */
 const STARTERS = [
   { label: "Use what's in my fridge", prompt: "something with chicken thighs, rice, and a lemon" },
-  { label: "Plan five dinners", prompt: "five weeknight dinners for two" },
-  { label: "Something quick", prompt: "a vegetarian dinner in under 30 minutes" },
+  { label: "Plan the week", prompt: "easy chicken dinners for two" },
+  // "a vegetarian dinner in under 30 minutes" put "30", "minutes" and "under"
+  // into the search as if they were foods, and duplicated the time term the
+  // profile already contributes. Naming the dish searches better.
+  { label: "Something quick", prompt: "a quick vegetarian pasta" },
 ];
 
 export function RecipeSearchCard() {

@@ -65,8 +65,28 @@ export const NOT_A_PRODUCT =
  * "/recipes/" path segment — that is just how Bon Appetit and others organise
  * perfectly good single recipes.
  */
-export const LOOKS_LIKE_ROUNDUP =
-  /\/g\d{5,}\/|\/slideshow\/|\/(?:roundups?|collections?|galleries|category|categories|tag|tags)\/|-recipes(?:-\d+)?\/?$|-(?:ideas|dinners|meals|meal-plan)(?:-\d+)?\/?$/i;
+export const LOOKS_LIKE_ROUNDUP = new RegExp(
+  [
+    // Section paths that only ever hold collections.
+    // Hearst sites (Delish, Bon Appetit) file a gallery under /g<id>/ and a
+    // single recipe under /a<id>/. Five digits was too strict: /g3053/ and
+    // /g4627/ are both real galleries that slipped through it.
+    String.raw`\/g\d{3,}\/`,
+    String.raw`\/(?:gallery|galleries|slideshow|roundups?|collections?|category|categories|tags?)\/`,
+    // A path segment opening with a small number: "40-easy-dinner-recipes",
+    // "5-nights-of-easy-dinners". Counting is what a listicle does.
+    String.raw`\/\d{1,3}-[a-z]`,
+    // The plural, anywhere in the path rather than only at the end. Singular
+    // "-recipe-" is how several of the allowlisted sites name one recipe, so it
+    // is deliberately not here.
+    String.raw`-(?:recipes|dinners|meals|dishes)(?:-|\/|$)`,
+    String.raw`meal-plans?`,
+    // "-ideas" stays end-anchored: Delish files individual recipes under
+    // /cooking/recipe-ideas/, and matching it mid-path would reject them.
+    String.raw`-ideas(?:-\d+)?\/?$`,
+  ].join("|"),
+  "i",
+);
 
 /** Path segments retailers use for an actual product page. */
 export const PRODUCT_PATH = /\/(?:ip|p|product|products|shop|item|dp|pd)\//i;

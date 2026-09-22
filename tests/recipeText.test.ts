@@ -24,7 +24,7 @@ import {
   sharesPromptWord,
   slugifyItem,
 } from "../convex/recipeText.ts";
-import { departmentFor } from "../convex/recipeCatalog.ts";
+import { LOOKS_LIKE_ROUNDUP, departmentFor } from "../convex/recipeCatalog.ts";
 
 const item = (line: string) => parseIngredientLine(line).item;
 
@@ -330,4 +330,38 @@ test("an allergy typed into the free-text box filters on its own name", () => {
 
 test("the explicit no-allergies answer is not treated as an allergen", () => {
   assert.equal(containsAllergen([parseIngredientLine("1 onion")], ["No food allergies"]), null);
+});
+
+// ------------------------------------------------------------------ roundups
+
+test("real roundup URLs are rejected before we pay to scrape them", () => {
+  // The four pages a live "five weeknight dinners for two" bought. Every
+  // keyword in the old pattern was anchored to the end of the path, which is
+  // where a roundup keyword almost never sits.
+  const roundups = [
+    "https://www.bonappetit.com/gallery/dinner-ideas-for-two?srsltid=AU7gw4V",
+    "https://www.thekitchn.com/5-nights-of-easy-dinners-for-a-busy-week-meal-plans-from-the-kitchn-216146",
+    "https://www.thekitchn.com/easy-meals-for-two-23783617",
+    "https://www.halfbakedharvest.com/40-easy-dinner-recipes-for-busy-weeknights/",
+  ];
+  for (const url of roundups) {
+    assert.ok(LOOKS_LIKE_ROUNDUP.test(url), `should reject ${url}`);
+  }
+});
+
+test("single recipes on the allowlisted sites are not mistaken for roundups", () => {
+  // Including the Delish shape, which files one recipe under /recipe-ideas/,
+  // and the Kitchn shape, which ends every single recipe in "-recipe-<id>".
+  const singles = [
+    "https://www.budgetbytes.com/chicken-noodle-soup",
+    "https://www.thekitchn.com/chicken-noodle-soup-recipe-23616715",
+    "https://www.halfbakedharvest.com/homestyle-chicken-noodle-soup",
+    "https://www.delish.com/cooking/recipe-ideas/a44475588/best-chicken-soup-recipe",
+    "https://www.loveandlemons.com/mushroom-soup",
+    "https://sallysbakingaddiction.com/carrot-cake",
+    "https://www.food.com/recipe/crock-pot-beef-stew-80560",
+  ];
+  for (const url of singles) {
+    assert.ok(!LOOKS_LIKE_ROUNDUP.test(url), `should keep ${url}`);
+  }
 });
