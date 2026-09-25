@@ -16,9 +16,10 @@ import {
 } from "./_generated/server";
 import { internal } from "./_generated/api";
 import { userForToken } from "./sessions";
+import { hasBudgetLeft } from "./credits";
+import { numberEnv } from "./env";
 import type { Doc } from "./_generated/dataModel";
 import {
-  DAILY_CREDIT_BUDGET,
   DEAL_STALL_AFTER_MS,
   MAX_JOBS_PER_USER_PER_DAY,
   MAX_PROMPT_LENGTH,
@@ -154,13 +155,19 @@ export const start = mutation({
     const now = Date.now();
     const since = now - DAY_MS;
 
+    // Overridable on the deployment, because a demo where several strangers
+    // share one account exhausts five searches in a couple of minutes.
+    const perUserCap = numberEnv(
+      "MAX_JOBS_PER_USER_PER_DAY",
+      MAX_JOBS_PER_USER_PER_DAY,
+    );
     const recent = await ctx.db
       .query("recipeJobs")
       .withIndex("by_user", (q) => q.eq("userId", user._id))
       .order("desc")
-      .take(MAX_JOBS_PER_USER_PER_DAY);
+      .take(perUserCap);
     if (
-      recent.length >= MAX_JOBS_PER_USER_PER_DAY &&
+      recent.length >= perUserCap &&
       recent.every((job) => job.createdAt > since)
     ) {
       return {
@@ -177,7 +184,7 @@ export const start = mutation({
     const spentToday = await ctx.runQuery(internal.credits.spentToday, {
       now: Date.now(),
     });
-    if (spentToday >= DAILY_CREDIT_BUDGET) {
+    if (!hasBudgetLeft(spentToday)) {
       return {
         ok: false,
         error: "We've hit today's search budget. Try again tomorrow.",

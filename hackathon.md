@@ -13,7 +13,7 @@
 - **Auth:** Other (hand-rolled emailed code plus opaque session tokens)
 - **AI models:** gpt-5.5
 - **Started:** 2026-08-28T19:01:02Z
-- **Last updated:** 2026-09-22T20:35:21Z
+- **Last updated:** 2026-09-25T16:56:17Z
 
 ## Log
 
@@ -1013,7 +1013,7 @@ Tests 202, typecheck and lint clean. Nothing here is deployed. Still open: the
 emails in `convex/emailShell.ts` and `convex/recipeEmail.ts` remain on that same
 old palette, so the mail is off-brand even though the site is not.
 
-### 2026-09-22 - working tree
+### 2026-09-22 - d20b159
 The "Plan five dinners" starter failed every time it was used, and today it was
 run live: four pages scraped, none readable, job failed. All four were
 collections — a Bon Appetit gallery, two Kitchn roundups and a Kitchn meal plan.
@@ -1068,3 +1068,50 @@ real reason finished jobs have carried between one and four. Raising
 `SEARCH_LIMIT` from ten to twenty would fix it, and Firecrawl bills per ten
 results, so it roughly doubles the cost of every search. Deliberately not done
 while the account is at zero.
+
+### 2026-09-25 - working tree
+Raised the two spend limits for a demo day, as deployment settings rather than
+as edits to the constants. `DAILY_CREDIT_BUDGET` and `MAX_JOBS_PER_USER_PER_DAY`
+now read an optional variable and fall back to the built-in 120 and 5, so today
+runs at 700 and 10 and tonight's revert is `npx convex env remove` twice, with
+no deploy and nothing left in the code for someone to forget
+(`convex/env.ts`, `convex/credits.ts`, `convex/recipeJobs.ts`). A malformed
+value falls back rather than throwing; a typo in a deployment variable should
+not take the app down.
+
+The per-user cap was raised alongside the credit budget without being asked for,
+because it is the one that actually bites: several people sharing one demo
+account exhaust five searches in a couple of minutes.
+
+Checked first that Firecrawl had credits again — it ran out on the 22nd — with a
+single one-credit scrape, since lifting our own ceiling does nothing if the
+account is empty. It succeeded, so the month's allowance has been restored.
+
+Both variables are set on dev and prod, but production is still serving the
+build from `d50a5f2` and will keep using the hardcoded defaults until it is
+deployed. Tests 207, typecheck and lint clean.
+
+Gave the browser tab a real icon, which it still did not have: `app/favicon.ico`
+was the Next.js default triangle, untouched since the scaffold, and because it
+is declared first in the head a browser prefers it over anything else. An
+earlier attempt today added `app/icon.svg` beside it, which therefore never
+displayed; both files now carry the same mark and it no longer matters which one
+wins (`app/favicon.ico`, `app/icon.png`, `app/icon.svg` removed).
+
+The mark is a snowflake, drawn for this project: six straight arms with paired
+side branches and a hexagonal core, which is how a real snowflake grows. The
+reference image suggested for it was Snowflake Inc.'s logo — their chevron-arm
+and diamond construction in their brand cyan — so it was not used. A snowflake
+suits a product called frigid; that particular snowflake belongs to a company
+whose name people in the room would recognise.
+
+The `.ico` carries different artwork per size rather than one bitmap scaled
+down. At sixteen pixels the full dendrite collapses into a smudge, so 16, 24 and
+32 get a simplified flake with one pair of branches and thicker strokes, and 48
+upward get the detailed one — seven sizes, each rendered from the geometry.
+Verified by reading the sizes back out of the built `out/favicon.ico` rather
+than trusting the source.
+
+Still true from the earlier note: the tile uses the logo's blue, and nothing in
+the app's teal, plum and mint palette is that colour. The tab matches the logo
+rather than the product.

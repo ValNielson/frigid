@@ -2,6 +2,7 @@ import { v } from "convex/values";
 import { internalMutation, internalQuery } from "./_generated/server";
 import type { QueryCtx } from "./_generated/server";
 import { DAILY_CREDIT_BUDGET } from "./recipePolicy";
+import { numberEnv } from "./env";
 
 /**
  * The shared Firecrawl credit ledger.
@@ -42,9 +43,17 @@ export async function creditsSpentToday(
   return rows.reduce((total, row) => total + row.credits, 0);
 }
 
+/**
+ * Today's ceiling. `DAILY_CREDIT_BUDGET` on the deployment overrides the
+ * built-in default, so a demo day can lift it and put it back without a deploy.
+ */
+export function dailyCreditBudget(): number {
+  return numberEnv("DAILY_CREDIT_BUDGET", DAILY_CREDIT_BUDGET);
+}
+
 /** Whether there is room in today's budget to start more paid work. */
 export function hasBudgetLeft(spent: number): boolean {
-  return spent < DAILY_CREDIT_BUDGET;
+  return spent < dailyCreditBudget();
 }
 
 export const spentToday = internalQuery({
